@@ -89,6 +89,7 @@ export class CanvasNode {
                 case 'csv':
                     return { width: 400, height: 300 };
             }
+            return{width: 100, height: 100};
         }
 }
 
