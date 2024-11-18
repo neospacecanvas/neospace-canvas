@@ -1,0 +1,30 @@
+{
+  "name": "neospace-canvas",
+  "version": "1.0.0",
+  "description": "A typescript infinite canvas implemented with no frameworks",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@types/node": "^22.9.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5"
+  },
+  "dependencies": {
+    "marked": "^15.0.0",
+    "uuid": "^11.0.3"
+  }
+}
