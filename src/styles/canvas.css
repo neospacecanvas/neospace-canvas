@@ -1,10 +1,7 @@
-/* src/styles/canvas.css */
 :root {
     --scale: 1;
     --pan-x: 0px;
     --pan-y: 0px;
-    --grid-size: 20px;
-    --grid-color: rgba(165, 216, 255, 0.5);
 }
 
 #canvas-container {
@@ -15,12 +12,11 @@
     height: 100vh;
     overflow: hidden;
     background-color: var(--color-bg-2);
-    background-image: radial-gradient(
-        var(--grid-color) calc(var(--scale)*0.5px + 0.5px),
-        transparent 0
-    );
-    background-size: calc(var(--scale) * var(--grid-size)) calc(var(--scale) * var(--grid-size));
-    background-position: calc(var(--pan-x)) calc(var(--pan-y));
+    cursor: default;
+}
+
+#canvas-container.dragging {
+    cursor: grabbing;
 }
 
 #canvas-edges {
@@ -41,6 +37,7 @@
     transform-origin: 0 0;
 }
 
+/* Node styling */
 .node {
     position: absolute;
     background: white;
@@ -61,4 +58,9 @@
 
 .node-content {
     padding: 12px;
+}
+
+/* Space bar pan styling */
+#canvas-container:not(.dragging) {
+    cursor: grab;
 }

@@ -16,7 +16,7 @@ export class GridManager {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Grid container not found');
         this.container = container;
-        
+
         this.setupContainer();
         this.setupEventListeners();
         this.updateTransform();
@@ -39,21 +39,21 @@ export class GridManager {
         this.container.addEventListener('wheel', (e: WheelEvent) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
-                
+
                 const rect = this.container.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                
+
                 const delta = e.deltaY * -0.001;
-                const newScale = Math.min(Math.max(this.MIN_SCALE, 
+                const newScale = Math.min(Math.max(this.MIN_SCALE,
                     this.scale * (1 + delta)), this.MAX_SCALE);
                 const scaleFactor = newScale / this.scale;
-                
+
                 this.panOffset = {
                     x: this.panOffset.x + (x - this.panOffset.x) * (1 - scaleFactor),
                     y: this.panOffset.y + (y - this.panOffset.y) * (1 - scaleFactor)
                 };
-                
+
                 this.scale = newScale;
                 this.updateTransform();
             }
