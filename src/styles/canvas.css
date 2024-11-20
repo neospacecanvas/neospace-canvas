@@ -1,0 +1,64 @@
+/* src/styles/canvas.css */
+:root {
+    --scale: 1;
+    --pan-x: 0px;
+    --pan-y: 0px;
+    --grid-size: 20px;
+    --grid-color: rgba(165, 216, 255, 0.5);
+}
+
+#canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--color-bg-2);
+    background-image: radial-gradient(
+        var(--grid-color) calc(var(--scale)*0.5px + 0.5px),
+        transparent 0
+    );
+    background-size: calc(var(--scale) * var(--grid-size)) calc(var(--scale) * var(--grid-size));
+    background-position: calc(var(--pan-x)) calc(var(--pan-y));
+}
+
+#canvas-edges {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#canvas-nodes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translate(var(--pan-x), var(--pan-y)) scale(var(--scale));
+    transform-origin: 0 0;
+}
+
+.node {
+    position: absolute;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    min-width: 200px;
+    min-height: 100px;
+}
+
+.node.is-dragging {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.node-header {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.node-content {
+    padding: 12px;
+}

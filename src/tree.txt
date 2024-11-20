@@ -1,0 +1,16 @@
+src/
+├── base/
+│   ├── CanvasNode.ts        (existing)
+│   ├── Canvas.ts            (core canvas class)
+│   └── CanvasManager.ts     (manages viewport, grid, and interactions)
+├── components/              (React/UI components)
+├── services/
+│   ├── GridService.ts       (grid rendering logic)
+│   ├── ViewportService.ts   (viewport management)
+│   └── SerializationService.ts (save/load functionality)
+├── types/
+│   ├── types.ts             (existing types)
+│   └── canvas.ts            (new canvas-specific types)
+├── utils/
+│   └── coordinates.ts       (coordinate conversion utilities)
+└── index.ts                 (main entry point)
