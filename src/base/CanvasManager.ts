@@ -5,7 +5,7 @@ import { CanvasNodeType, Coordinate, NodeContent } from '@/types/types';
 export class CanvasManager {
     private readonly container: HTMLElement;
     private readonly nodesContainer: HTMLDivElement;
-    private readonly edgesContainer: SVGSVGElement;
+    // private readonly edgesContainer: SVGSVGElement;
     private readonly nodes: Map<string, CanvasNode>;
     
     // Viewport state
@@ -20,7 +20,7 @@ export class CanvasManager {
     // Constants
     private readonly MIN_SCALE = 0.1;
     private readonly MAX_SCALE = 2;
-    private readonly GRID_SIZE = 20;
+    // private readonly GRID_SIZE = 20;
 
     constructor(containerId: string) {
         const container = document.getElementById(containerId);
@@ -29,7 +29,7 @@ export class CanvasManager {
         
         // Initialize containers
         this.nodesContainer = this.createNodesContainer();
-        this.edgesContainer = this.createEdgesContainer();
+        // this.edgesContainer = this.createEdgesContainer();
         this.nodes = new Map();
         
         this.setupEventListeners();
@@ -46,15 +46,15 @@ export class CanvasManager {
         return container;
     }
 
-    private createEdgesContainer(): SVGSVGElement {
-        const existing = document.getElementById('canvas-edges');
-        if (existing instanceof SVGSVGElement) return existing;
+    // private createEdgesContainer(): SVGSVGElement {
+    //     const existing = document.getElementById('canvas-edges');
+    //     if (existing instanceof SVGSVGElement) return existing;
         
-        const container = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        container.id = 'canvas-edges';
-        this.container.appendChild(container);
-        return container;
-    }
+    //     const container = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    //     container.id = 'canvas-edges';
+    //     this.container.appendChild(container);
+    //     return container;
+    // }
 
     private updateCSSVariables(): void {
         document.documentElement.style.setProperty('--scale', String(this.scale));

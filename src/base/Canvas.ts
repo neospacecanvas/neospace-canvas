@@ -3,7 +3,7 @@ import { CanvasNode } from "./CanvasNode";
 
 export class Canvas {
     private nodes: Map<string, CanvasNode>;
-    private version: string = "1.0;"
+    // private version: string = "1.0;"
 
     constructor() {
         this.nodes = new Map();
