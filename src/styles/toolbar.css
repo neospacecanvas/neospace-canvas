@@ -1,0 +1,49 @@
+/* styles/toolbar.css */
+.canvas-toolbar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border: 1px solid #e5e7eb;
+    z-index: 1000; /* Ensure it's above the WebGL canvas */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.toolbar-button {
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #4b5563;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    font-size: 16px;
+    width: 36px;
+    height: 36px;
+}
+
+.toolbar-button:hover {
+    background-color: #f3f4f6;
+}
+
+.toolbar-button.active {
+    background-color: #dbeafe;
+    color: #2563eb;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background-color: #e5e7eb;
+    margin: 0 4px;
+}
