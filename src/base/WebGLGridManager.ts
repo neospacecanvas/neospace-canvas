@@ -6,11 +6,8 @@ export class WebGLGridManager {
     private program: WebGLProgram;
     private scale: number = 1;
     private panOffset: { x: number; y: number } = { x: 0, y: 0 };
-    private gridSize: number = 20;
-    // private isDragging: boolean = false;
-    // private lastMousePos: { x: number; y: number } | null = null;
+    private gridSize: number = 12;
 
-    // Shader locations
     private positionLocation: number = -1;
     private resolutionLocation: WebGLUniformLocation | null = null;
     private scaleLocation: WebGLUniformLocation | null = null;
@@ -18,8 +15,10 @@ export class WebGLGridManager {
     private gridSizeLocation: WebGLUniformLocation | null = null;
     private dotColorLocation: WebGLUniformLocation | null = null;
 
+    private readonly MIN_SCALE = 0.1;
+    private readonly MAX_SCALE = 4.0;
+
     constructor(container: HTMLElement) {
-        // Create and setup canvas
         this.canvas = document.createElement('canvas');
         this.canvas.style.position = 'absolute';
         this.canvas.style.top = '0';
@@ -29,7 +28,6 @@ export class WebGLGridManager {
         this.canvas.style.pointerEvents = 'none';
         container.appendChild(this.canvas);
 
-        // Initialize WebGL
         const gl = this.canvas.getContext('webgl', {
             antialias: true,
             alpha: true
@@ -37,35 +35,16 @@ export class WebGLGridManager {
         if (!gl) throw new Error('WebGL not supported');
         this.gl = gl;
 
-        // Enable alpha blending
         this.gl.enable(this.gl.BLEND);
         this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
-        // Create shaders and program
         const program = this.initShaders();
         if (!program) throw new Error('Failed to create shader program');
         this.program = program;
 
-        // Setup program and start rendering
         this.setupProgram();
         this.resize();
         this.render();
-    }
-
-    public updateViewport(viewport: ViewportState): void {
-        this.scale = viewport.scale;
-        this.panOffset = { ...viewport.panOffset };
-    }
-
-    public setGridSize(size: number): void {
-        this.gridSize = size;
-    }
-
-    public destroy(): void {
-        this.canvas.remove();
-        if (this.program) {
-            this.gl.deleteProgram(this.program);
-        }
     }
 
     private createShader(type: number, source: string): WebGLShader | null {
@@ -101,18 +80,20 @@ export class WebGLGridManager {
             
             float drawDot(vec2 point, vec2 center, float radius) {
                 float dist = length(point - center);
-                return smoothstep(radius, radius - 1.0, dist);
+                return smoothstep(radius, radius - 0.8, dist);
             }
             
             void main() {
                 vec2 pixelCoord = gl_FragCoord.xy;
-                vec2 adjustedCoord = (pixelCoord + uPanOffset) / uScale;
-                float scaledGridSize = uGridSize * uScale;
-                vec2 gridPos = mod(adjustedCoord, vec2(scaledGridSize));
-                vec2 cellCenter = vec2(scaledGridSize * 0.5);
-                float dotRadius = min(2.0, max(1.0, uScale * 0.5));
+                vec2 adjustedCoord = (pixelCoord + uPanOffset) / (uGridSize * uScale);
+                vec2 gridPos = fract(adjustedCoord) * (uGridSize * uScale);
+                vec2 cellCenter = vec2(uGridSize * 0.5) * uScale;
+                
+                float dotRadius = 1.0 * uScale;
                 float dot = drawDot(gridPos, cellCenter, dotRadius);
-                gl_FragColor = vec4(uDotColor, dot);
+                
+                float opacity = mix(0.4, 0.8, clamp(uScale * 0.5, 0.0, 1.0));
+                gl_FragColor = vec4(uDotColor, dot * opacity);
             }
         `;
 
@@ -159,6 +140,15 @@ export class WebGLGridManager {
         this.gl.vertexAttribPointer(this.positionLocation, 2, this.gl.FLOAT, false, 0, 0);
     }
 
+    public updateViewport(viewport: ViewportState): void {
+        this.scale = Math.min(Math.max(viewport.scale, this.MIN_SCALE), this.MAX_SCALE);
+        this.panOffset = viewport.panOffset;
+    }
+
+    public setGridSize(size: number): void {
+        this.gridSize = size;
+    }
+
     public resize = (): void => {
         const { width, height } = this.canvas.parentElement!.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -177,10 +167,16 @@ export class WebGLGridManager {
         this.gl.uniform1f(this.scaleLocation!, this.scale);
         this.gl.uniform2f(this.panOffsetLocation!, this.panOffset.x, this.panOffset.y);
         this.gl.uniform1f(this.gridSizeLocation!, this.gridSize);
-        this.gl.uniform3f(this.dotColorLocation!, 0.647, 0.847, 1.0); // Light blue dots
+        this.gl.uniform3f(this.dotColorLocation!, 0.647, 0.847, 1.0);
 
         this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
-
         requestAnimationFrame(this.render);
     };
+
+    public destroy(): void {
+        this.canvas.remove();
+        if (this.program) {
+            this.gl.deleteProgram(this.program);
+        }
+    }
 }

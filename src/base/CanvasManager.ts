@@ -2,8 +2,8 @@ import { WebGLGridManager } from '@/base/WebGLGridManager';
 import { Coordinate } from '@/types/types';
 import { Node } from '@/base/Node';
 import { ViewportState } from '@/types/canvas';
+
 export class CanvasManager {
-    [x: string]: any;
     private readonly container: HTMLElement;
     private readonly nodesContainer: HTMLDivElement;
     private readonly edgesContainer: SVGSVGElement;
@@ -18,57 +18,39 @@ export class CanvasManager {
     private isDragging: boolean = false;
     private isSpacePressed: boolean = false;
     private lastMousePos: Coordinate | null = null;
-    // private selectedNodeId: string | null = null;
 
     // Constants
-    private readonly MIN_SCALE = 0.1;
-    private readonly MAX_SCALE = 5.0;
+    private readonly MIN_SCALE = 0.1;  // 10% minimum zoom
+    private readonly MAX_SCALE = 4.0;  // 400% maximum zoom
     private readonly ZOOM_SPEED = 0.001;
 
     constructor(containerId: string) {
-        // Initialize containers
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Canvas container not found');
         this.container = container;
 
-        // Create nodes container
         this.nodesContainer = document.createElement('div');
         this.nodesContainer.id = 'canvas-nodes';
         this.container.appendChild(this.nodesContainer);
 
-        // Debug
-        console.log('Nodes container created:', this.nodesContainer);
-
-        // Create edges container
         this.edgesContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         this.edgesContainer.id = 'canvas-edges';
         this.container.appendChild(this.edgesContainer);
 
-        // Initialize WebGL grid
         this.gridManager = new WebGLGridManager(this.container);
-
-        // Initialize node storage
         this.nodes = new Map();
 
-        // Setup event listeners
         this.setupEventListeners();
         this.updateTransform();
     }
 
     private setupEventListeners(): void {
-        // Zoom handling
         this.container.addEventListener('wheel', this.handleWheel.bind(this));
-
-        // Pan handling
         this.container.addEventListener('mousedown', this.handleMouseDown.bind(this));
         window.addEventListener('mousemove', this.handleMouseMove.bind(this));
         window.addEventListener('mouseup', this.handleMouseUp.bind(this));
-
-        // Keyboard handling
         window.addEventListener('keydown', this.handleKeyDown.bind(this));
         window.addEventListener('keyup', this.handleKeyUp.bind(this));
-
-        // Window resize handling
         window.addEventListener('resize', this.handleResize.bind(this));
     }
 
@@ -77,16 +59,21 @@ export class CanvasManager {
             e.preventDefault();
 
             const rect = this.container.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
 
-            const zoomDelta = e.deltaY * -this.ZOOM_SPEED;
+            const zoomDelta = -e.deltaY * this.ZOOM_SPEED;
             const newScale = Math.min(Math.max(this.scale * (1 + zoomDelta), this.MIN_SCALE), this.MAX_SCALE);
             const scaleFactor = newScale / this.scale;
 
-            this.panOffset.x += (x - this.panOffset.x) * (1 - scaleFactor);
-            this.panOffset.y += (y - this.panOffset.y) * (1 - scaleFactor);
+            // Calculate new pan offset to zoom toward mouse position
+            const dx = mouseX - this.panOffset.x;
+            const dy = mouseY - this.panOffset.y;
+            const newX = mouseX - dx * scaleFactor;
+            const newY = mouseY - dy * scaleFactor;
+
             this.scale = newScale;
+            this.panOffset = { x: newX, y: newY };
 
             this.updateTransform();
         }
@@ -96,7 +83,7 @@ export class CanvasManager {
         if (e.button === 0 && (this.isSpacePressed || e.target === this.container)) {
             this.isDragging = true;
             this.lastMousePos = { x: e.clientX, y: e.clientY };
-            this.container.style.cursor = 'grabbing';
+            this.container.classList.add('dragging');
         }
     }
 
@@ -106,7 +93,7 @@ export class CanvasManager {
         const dx = e.clientX - this.lastMousePos.x;
         const dy = e.clientY - this.lastMousePos.y;
 
-        this.panOffset.x -= dx;
+        this.panOffset.x += dx;
         this.panOffset.y += dy;
 
         this.lastMousePos = { x: e.clientX, y: e.clientY };
@@ -117,17 +104,15 @@ export class CanvasManager {
         if (this.isDragging) {
             this.isDragging = false;
             this.lastMousePos = null;
-            this.container.style.cursor = '';
+            this.container.classList.remove('dragging');
         }
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
-        if (e.target instanceof HTMLElement) {
-            if (e.code === 'Space' && !e.repeat && !e.target.isContentEditable) {
-                e.preventDefault();
-                this.isSpacePressed = true;
-                this.container.style.cursor = 'grab';
-            }
+        if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
+            e.preventDefault();
+            this.isSpacePressed = true;
+            this.container.style.cursor = 'grab';
         }
     }
 
@@ -139,38 +124,29 @@ export class CanvasManager {
     }
 
     private handleResize(): void {
-        // Now calls the public method
         this.gridManager.resize();
     }
 
     private updateTransform(): void {
-        // Update CSS variables for nodes and edges transform
+        // Update CSS transforms for nodes
         document.documentElement.style.setProperty('--scale', String(this.scale));
         document.documentElement.style.setProperty('--pan-x', `${this.panOffset.x}px`);
         document.documentElement.style.setProperty('--pan-y', `${this.panOffset.y}px`);
 
-        // Update WebGL grid
+        // Only invert X for WebGL coordinate system, keep Y the same
         this.gridManager.updateViewport({
             scale: this.scale,
-            panOffset: this.panOffset
+            panOffset: {
+                x: -this.panOffset.x,
+                y: this.panOffset.y
+            }
         });
     }
 
     public addNode(node: Node): void {
-        console.log('Adding node:', node);
         this.nodes.set(node.getId(), node);
         const element = node.createNodeElement();
-        console.log('Created element:', element.outerHTML);
         this.nodesContainer.appendChild(element);
-
-        // Debug check after adding
-        requestAnimationFrame(() => {
-            const addedElement = document.getElementById(node.getId());
-            if (addedElement) {
-                console.log('Node in DOM:', addedElement.outerHTML);
-                console.log('Node styles:', window.getComputedStyle(addedElement));
-            }
-        });
     }
 
     public removeNode(nodeId: string): void {
@@ -189,17 +165,13 @@ export class CanvasManager {
     }
 
     public destroy(): void {
-        // Remove event listeners
         window.removeEventListener('mousemove', this.handleMouseMove.bind(this));
         window.removeEventListener('mouseup', this.handleMouseUp.bind(this));
         window.removeEventListener('keydown', this.handleKeyDown.bind(this));
         window.removeEventListener('keyup', this.handleKeyUp.bind(this));
         window.removeEventListener('resize', this.handleResize.bind(this));
 
-        // Clean up grid
         this.gridManager.destroy();
-
-        // Clear nodes
         this.nodes.clear();
         this.nodesContainer.innerHTML = '';
     }
