@@ -18,12 +18,11 @@ export class CSVNode extends Node {
     }
 
     protected renderContent(): string {
+        // For debugging, let's use a simple emoji instead of an image first
         return `
             <div class="node-header">CSV File</div>
             <div class="node-content">
-                <div class="node-icon">
-                    <img src="/assets/csv.png" alt="CSV" class="csv-icon" />
-                </div>
+                <div class="node-icon">📊</div>
                 <div class="node-filename">${this.fileName}</div>
             </div>
         `;

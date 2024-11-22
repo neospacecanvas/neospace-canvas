@@ -1,9 +1,7 @@
 import { WebGLGridManager } from '@/base/WebGLGridManager';
-import { Coordinate, NodeType } from '@/types/types';
+import { Coordinate } from '@/types/types';
 import { Node } from '@/base/Node';
 import { ViewportState } from '@/types/canvas';
-import { CSVNode } from './CSVNode';
-
 export class CanvasManager {
     [x: string]: any;
     private readonly container: HTMLElement;
@@ -11,17 +9,17 @@ export class CanvasManager {
     private readonly edgesContainer: SVGSVGElement;
     private readonly gridManager: WebGLGridManager;
     private readonly nodes: Map<string, Node>;
-    
+
     // Viewport state
     private scale: number = 1;
     private panOffset: Coordinate = { x: 0, y: 0 };
-    
+
     // Interaction state
     private isDragging: boolean = false;
     private isSpacePressed: boolean = false;
     private lastMousePos: Coordinate | null = null;
     // private selectedNodeId: string | null = null;
-    
+
     // Constants
     private readonly MIN_SCALE = 0.1;
     private readonly MAX_SCALE = 5.0;
@@ -32,23 +30,26 @@ export class CanvasManager {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Canvas container not found');
         this.container = container;
-        
+
         // Create nodes container
         this.nodesContainer = document.createElement('div');
         this.nodesContainer.id = 'canvas-nodes';
         this.container.appendChild(this.nodesContainer);
-        
+
+        // Debug
+        console.log('Nodes container created:', this.nodesContainer);
+
         // Create edges container
         this.edgesContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         this.edgesContainer.id = 'canvas-edges';
         this.container.appendChild(this.edgesContainer);
-        
+
         // Initialize WebGL grid
         this.gridManager = new WebGLGridManager(this.container);
-        
+
         // Initialize node storage
         this.nodes = new Map();
-        
+
         // Setup event listeners
         this.setupEventListeners();
         this.updateTransform();
@@ -57,16 +58,16 @@ export class CanvasManager {
     private setupEventListeners(): void {
         // Zoom handling
         this.container.addEventListener('wheel', this.handleWheel.bind(this));
-        
+
         // Pan handling
         this.container.addEventListener('mousedown', this.handleMouseDown.bind(this));
         window.addEventListener('mousemove', this.handleMouseMove.bind(this));
         window.addEventListener('mouseup', this.handleMouseUp.bind(this));
-        
+
         // Keyboard handling
         window.addEventListener('keydown', this.handleKeyDown.bind(this));
         window.addEventListener('keyup', this.handleKeyUp.bind(this));
-        
+
         // Window resize handling
         window.addEventListener('resize', this.handleResize.bind(this));
     }
@@ -74,19 +75,19 @@ export class CanvasManager {
     private handleWheel(e: WheelEvent): void {
         if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            
+
             const rect = this.container.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-            
+
             const zoomDelta = e.deltaY * -this.ZOOM_SPEED;
             const newScale = Math.min(Math.max(this.scale * (1 + zoomDelta), this.MIN_SCALE), this.MAX_SCALE);
             const scaleFactor = newScale / this.scale;
-            
+
             this.panOffset.x += (x - this.panOffset.x) * (1 - scaleFactor);
             this.panOffset.y += (y - this.panOffset.y) * (1 - scaleFactor);
             this.scale = newScale;
-            
+
             this.updateTransform();
         }
     }
@@ -101,13 +102,13 @@ export class CanvasManager {
 
     private handleMouseMove(e: MouseEvent): void {
         if (!this.isDragging || !this.lastMousePos) return;
-        
+
         const dx = e.clientX - this.lastMousePos.x;
         const dy = e.clientY - this.lastMousePos.y;
-        
+
         this.panOffset.x -= dx;
         this.panOffset.y += dy;
-        
+
         this.lastMousePos = { x: e.clientX, y: e.clientY };
         this.updateTransform();
     }
@@ -147,7 +148,7 @@ export class CanvasManager {
         document.documentElement.style.setProperty('--scale', String(this.scale));
         document.documentElement.style.setProperty('--pan-x', `${this.panOffset.x}px`);
         document.documentElement.style.setProperty('--pan-y', `${this.panOffset.y}px`);
-        
+
         // Update WebGL grid
         this.gridManager.updateViewport({
             scale: this.scale,
@@ -156,42 +157,20 @@ export class CanvasManager {
     }
 
     public addNode(node: Node): void {
-        console.log('Adding node to canvas:', node);
+        console.log('Adding node:', node);
         this.nodes.set(node.getId(), node);
-        const element = this.createNodeElement(node);
-        console.log('Created element:', element);
+        const element = node.createNodeElement();
+        console.log('Created element:', element.outerHTML);
         this.nodesContainer.appendChild(element);
-        console.log('Node container children:', this.nodesContainer.children.length);
-    }
-    
-    private createNodeElement(node: Node): HTMLElement {
-        const element = document.createElement('div');
-        element.id = node.getId();
-        element.className = 'node';
-        
-        const pos = node.getPosition();
-        element.style.left = `${pos.x}px`;
-        element.style.top = `${pos.y}px`;
-        
-        console.log('Creating element for node type:', node.getType());
-        
-        if (node.getType() === NodeType.CSV) {
-            element.className += ' csv-node';
-            const dimensions = node.getDimensions();
-            element.style.width = `${dimensions.width}px`;
-            element.style.height = `${dimensions.height}px`;
-            
-            element.innerHTML = `
-                <div class="node-header">CSV File</div>
-                <div class="node-content">
-                    <div class="node-icon">📊</div>
-                    <div class="node-filename">${(node as CSVNode).getFileName()}</div>
-                </div>
-            `;
-            console.log('Created CSV node element:', element.outerHTML);
-        }
-        
-        return element;
+
+        // Debug check after adding
+        requestAnimationFrame(() => {
+            const addedElement = document.getElementById(node.getId());
+            if (addedElement) {
+                console.log('Node in DOM:', addedElement.outerHTML);
+                console.log('Node styles:', window.getComputedStyle(addedElement));
+            }
+        });
     }
 
     public removeNode(nodeId: string): void {
@@ -216,15 +195,15 @@ export class CanvasManager {
         window.removeEventListener('keydown', this.handleKeyDown.bind(this));
         window.removeEventListener('keyup', this.handleKeyUp.bind(this));
         window.removeEventListener('resize', this.handleResize.bind(this));
-        
+
         // Clean up grid
         this.gridManager.destroy();
-        
+
         // Clear nodes
         this.nodes.clear();
         this.nodesContainer.innerHTML = '';
     }
-    
+
     public getViewportCenter(): Coordinate {
         return {
             x: -this.panOffset.x / this.scale + window.innerWidth / 2 / this.scale,

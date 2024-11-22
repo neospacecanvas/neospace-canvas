@@ -4,6 +4,15 @@
     --pan-y: 0px;
 }
 
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
 #canvas-container {
     position: fixed;
     top: 0;
@@ -33,18 +42,23 @@
     position: absolute;
     top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
     transform: translate(var(--pan-x), var(--pan-y)) scale(var(--scale));
     transform-origin: 0 0;
-    pointer-events: none;
+    z-index: 2;  /* Above the WebGL grid */
+    pointer-events: none; /* Let events pass through container */
 }
 
 /* Node styling */
 .node {
     position: absolute;
-    pointer-events: auto;
+    pointer-events: auto; /* Re-enable events for nodes */
+    user-select: none;
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 2; /* Ensure nodes are above grid */
 }
 
 .node.is-dragging {
@@ -66,11 +80,8 @@
 }
 
 .csv-node {
-    background-color: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    overflow: hidden;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 2px solid #4b5563 !important;
 }
 
 .csv-node .node-content {

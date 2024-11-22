@@ -5,7 +5,7 @@ export abstract class Node {
     private readonly id: string;
     private position: Coordinate;
     private dimensions: Dimensions;
-    protected content: NodeContent;  // Made protected so derived classes can access
+    protected content: NodeContent;
 
     constructor(
         position: Coordinate,
@@ -19,39 +19,64 @@ export abstract class Node {
         this.dimensions = dimensions || this.getDefaultDimensions();
     }
 
-    // Common methods remain the samet
+    // Concrete methods for state management
     getId(): string { return this.id; }
     getType(): NodeContent['type'] { return this.content.type; }
     getPosition(): Coordinate { return { ...this.position }; }
     getDimensions(): Dimensions { return { ...this.dimensions }; }
+    
+    setPosition(position: Coordinate): void {
+        this.position = { ...position };
+        // Optionally trigger a DOM update if needed
+        this.updateDOMPosition();
+    }
 
-    // Make this protected abstract to force derived classes to implement their own rendering
+    setDimensions(dimensions: Dimensions): void {
+        this.dimensions = { ...dimensions };
+        // Optionally trigger a DOM update if needed
+        this.updateDOMDimensions();
+    }
+
+    // Optional DOM update methods that derived classes can override
+    protected updateDOMPosition(): void {
+        const element = document.getElementById(this.id);
+        if (element) {
+            element.style.left = `${this.position.x}px`;
+            element.style.top = `${this.position.y}px`;
+        }
+    }
+
+    protected updateDOMDimensions(): void {
+        const element = document.getElementById(this.id);
+        if (element) {
+            element.style.width = `${this.dimensions.width}px`;
+            element.style.height = `${this.dimensions.height}px`;
+        }
+    }
+
+    // Abstract method for content rendering
     protected abstract renderContent(): string;
 
-    // Template method that handles common node structure
+    protected getDefaultDimensions(): Dimensions {
+        return { width: 200, height: 150 };
+    }
+
+    // Template method for creating the full node element
     createNodeElement(): HTMLElement {
         const element = document.createElement('div');
         element.id = this.getId();
         element.className = `node ${this.getNodeClassName()}`;
         
-        const pos = this.getPosition();
-        const dim = this.getDimensions();
-        
-        element.style.left = `${pos.x}px`;
-        element.style.top = `${pos.y}px`;
-        element.style.width = `${dim.width}px`;
-        element.style.height = `${dim.height}px`;
+        element.style.left = `${this.position.x}px`;
+        element.style.top = `${this.position.y}px`;
+        element.style.width = `${this.dimensions.width}px`;
+        element.style.height = `${this.dimensions.height}px`;
         
         element.innerHTML = this.renderContent();
         return element;
     }
 
-    // Allow derived classes to add their own classes
     protected getNodeClassName(): string {
         return '';
-    }
-
-    protected getDefaultDimensions(): Dimensions {
-        return { width: 200, height: 150 };  // Sensible default size
     }
 }
