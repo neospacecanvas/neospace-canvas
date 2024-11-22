@@ -14,9 +14,14 @@ export class WebGLGridManager {
     private panOffsetLocation: WebGLUniformLocation | null = null;
     private gridSizeLocation: WebGLUniformLocation | null = null;
     private dotColorLocation: WebGLUniformLocation | null = null;
+    private bgColorLocation: WebGLUniformLocation | null = null;
 
     private readonly MIN_SCALE = 0.1;
     private readonly MAX_SCALE = 4.0;
+
+    // Theme colors
+    private isDarkMode: boolean = false;
+    private mediaQuery: MediaQueryList;
 
     constructor(container: HTMLElement) {
         this.canvas = document.createElement('canvas');
@@ -38,6 +43,11 @@ export class WebGLGridManager {
         this.gl.enable(this.gl.BLEND);
         this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
+        // Setup theme handling
+        this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        this.isDarkMode = this.mediaQuery.matches;
+        this.mediaQuery.addEventListener('change', this.handleThemeChange);
+
         const program = this.initShaders();
         if (!program) throw new Error('Failed to create shader program');
         this.program = program;
@@ -47,7 +57,11 @@ export class WebGLGridManager {
         this.render();
     }
 
-    private createShader(type: number, source: string): WebGLShader | null {
+    private handleThemeChange = (e: MediaQueryListEvent): void => {
+        this.isDarkMode = e.matches;
+    }
+
+    private createShader = (type: number, source: string): WebGLShader | null => {
         const shader = this.gl.createShader(type);
         if (!shader) return null;
 
@@ -62,7 +76,7 @@ export class WebGLGridManager {
         return shader;
     }
 
-    private initShaders(): WebGLProgram | null {
+    private initShaders = (): WebGLProgram | null => {
         const vertexShaderSource = `
             attribute vec2 position;
             void main() {
@@ -77,6 +91,7 @@ export class WebGLGridManager {
             uniform vec2 uPanOffset;
             uniform float uGridSize;
             uniform vec3 uDotColor;
+            uniform vec3 uBgColor;
             
             float drawDot(vec2 point, vec2 center, float radius) {
                 float dist = length(point - center);
@@ -85,15 +100,22 @@ export class WebGLGridManager {
             
             void main() {
                 vec2 pixelCoord = gl_FragCoord.xy;
-                vec2 adjustedCoord = (pixelCoord + uPanOffset) / (uGridSize * uScale);
-                vec2 gridPos = fract(adjustedCoord) * (uGridSize * uScale);
-                vec2 cellCenter = vec2(uGridSize * 0.5) * uScale;
+                vec2 adjustedCoord = pixelCoord + uPanOffset;
+                float scaledGridSize = uGridSize * uScale;
+                vec2 gridCoord = adjustedCoord / scaledGridSize;
+                vec2 cellPosition = fract(gridCoord) * scaledGridSize;
                 
-                float dotRadius = 1.0 * uScale;
-                float dot = drawDot(gridPos, cellCenter, dotRadius);
+                float dotBaseRadius = 1.2;
+                float scaledRadius = dotBaseRadius * uScale;
+                
+                vec2 cellCenter = vec2(scaledGridSize * 0.5);
+                float dot = drawDot(cellPosition, cellCenter, scaledRadius);
                 
                 float opacity = mix(0.4, 0.8, clamp(uScale * 0.5, 0.0, 1.0));
-                gl_FragColor = vec4(uDotColor, dot * opacity);
+                
+                // Mix between background color and dot color
+                vec3 finalColor = mix(uBgColor, uDotColor, dot * opacity);
+                gl_FragColor = vec4(finalColor, 1.0);
             }
         `;
 
@@ -117,7 +139,7 @@ export class WebGLGridManager {
         return program;
     }
 
-    private setupProgram(): void {
+    private setupProgram = (): void => {
         const positions = new Float32Array([
             -1, -1,
              1, -1,
@@ -135,6 +157,7 @@ export class WebGLGridManager {
         this.panOffsetLocation = this.gl.getUniformLocation(this.program, 'uPanOffset');
         this.gridSizeLocation = this.gl.getUniformLocation(this.program, 'uGridSize');
         this.dotColorLocation = this.gl.getUniformLocation(this.program, 'uDotColor');
+        this.bgColorLocation = this.gl.getUniformLocation(this.program, 'uBgColor');
 
         this.gl.enableVertexAttribArray(this.positionLocation);
         this.gl.vertexAttribPointer(this.positionLocation, 2, this.gl.FLOAT, false, 0, 0);
@@ -156,27 +179,34 @@ export class WebGLGridManager {
         this.canvas.width = width * dpr;
         this.canvas.height = height * dpr;
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    };
+    }
 
+    private getThemeColors(): { bg: [number, number, number], dot: [number, number, number] } {
+        if (this.isDarkMode) {
+            return {
+                bg: [0.118, 0.118, 0.118],  // Dark background (#1E1E1E)
+                dot: [0.7, 0.7, 0.7]        // Light grey dots
+            };
+        } else {
+            return {
+                bg: [1.0, 1.0, 1.0],       // White background
+                dot: [0.0, 0.47, 1.0]      // Blue dots (#0078FF)
+            };
+        }
+    }
+    
     private render = (): void => {
-        this.gl.clearColor(0.118, 0.118, 0.118, 1.0);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+        const colors = this.getThemeColors();
 
         this.gl.useProgram(this.program);
         this.gl.uniform2f(this.resolutionLocation!, this.canvas.width, this.canvas.height);
         this.gl.uniform1f(this.scaleLocation!, this.scale);
         this.gl.uniform2f(this.panOffsetLocation!, this.panOffset.x, this.panOffset.y);
         this.gl.uniform1f(this.gridSizeLocation!, this.gridSize);
-        this.gl.uniform3f(this.dotColorLocation!, 0.647, 0.847, 1.0);
+        this.gl.uniform3f(this.dotColorLocation!, colors.dot[0], colors.dot[1], colors.dot[2]);
+        this.gl.uniform3f(this.bgColorLocation!, colors.bg[0], colors.bg[1], colors.bg[2]);
 
         this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(this.render);
-    };
-
-    public destroy(): void {
-        this.canvas.remove();
-        if (this.program) {
-            this.gl.deleteProgram(this.program);
-        }
     }
 }
