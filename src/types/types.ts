@@ -20,8 +20,8 @@ export interface CSVData {
 
 // Union type for all node types
 export type NodeContent =
-    | { type: CanvasNodeType.MARKDOWN; data: MarkdownData}
-    | {type: CanvasNodeType.CSV; data: CSVData};
+    | { type: NodeType.MARKDOWN; data: MarkdownData}
+    | {type: NodeType.CSV; data: CSVData};
 
 export interface SerializedNode {
     id: string;
@@ -31,7 +31,7 @@ export interface SerializedNode {
     version: number;
 }
 
-export enum CanvasNodeType {
+export enum NodeType {
     MARKDOWN = 'markdown',
     CSV = 'csv'
 }

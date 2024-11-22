@@ -1,14 +1,16 @@
 import { WebGLGridManager } from '@/base/WebGLGridManager';
-import { Coordinate, CanvasNodeType } from '@/types/types';
-import { CanvasNode } from '@/base/CanvasNode';
+import { Coordinate, NodeType } from '@/types/types';
+import { Node } from '@/base/Node';
 import { ViewportState } from '@/types/canvas';
+import { CSVNode } from './CSVNode';
 
 export class CanvasManager {
+    [x: string]: any;
     private readonly container: HTMLElement;
     private readonly nodesContainer: HTMLDivElement;
     private readonly edgesContainer: SVGSVGElement;
     private readonly gridManager: WebGLGridManager;
-    private readonly nodes: Map<string, CanvasNode>;
+    private readonly nodes: Map<string, Node>;
     
     // Viewport state
     private scale: number = 1;
@@ -153,12 +155,16 @@ export class CanvasManager {
         });
     }
 
-    public addNode(node: CanvasNode): void {
+    public addNode(node: Node): void {
+        console.log('Adding node to canvas:', node);
         this.nodes.set(node.getId(), node);
-        this.nodesContainer.appendChild(this.createNodeElement(node));
+        const element = this.createNodeElement(node);
+        console.log('Created element:', element);
+        this.nodesContainer.appendChild(element);
+        console.log('Node container children:', this.nodesContainer.children.length);
     }
-
-    private createNodeElement(node: CanvasNode): HTMLElement {
+    
+    private createNodeElement(node: Node): HTMLElement {
         const element = document.createElement('div');
         element.id = node.getId();
         element.className = 'node';
@@ -167,12 +173,22 @@ export class CanvasManager {
         element.style.left = `${pos.x}px`;
         element.style.top = `${pos.y}px`;
         
-        // Add node content
-        if (node.getType() === CanvasNodeType.MARKDOWN) {
+        console.log('Creating element for node type:', node.getType());
+        
+        if (node.getType() === NodeType.CSV) {
+            element.className += ' csv-node';
+            const dimensions = node.getDimensions();
+            element.style.width = `${dimensions.width}px`;
+            element.style.height = `${dimensions.height}px`;
+            
             element.innerHTML = `
-                <div class="node-header">Markdown Note</div>
-                <div class="node-content">${node.getData()}</div>
+                <div class="node-header">CSV File</div>
+                <div class="node-content">
+                    <div class="node-icon">📊</div>
+                    <div class="node-filename">${(node as CSVNode).getFileName()}</div>
+                </div>
             `;
+            console.log('Created CSV node element:', element.outerHTML);
         }
         
         return element;
@@ -207,5 +223,12 @@ export class CanvasManager {
         // Clear nodes
         this.nodes.clear();
         this.nodesContainer.innerHTML = '';
+    }
+    
+    public getViewportCenter(): Coordinate {
+        return {
+            x: -this.panOffset.x / this.scale + window.innerWidth / 2 / this.scale,
+            y: -this.panOffset.y / this.scale + window.innerHeight / 2 / this.scale
+        };
     }
 }

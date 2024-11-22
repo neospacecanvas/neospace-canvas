@@ -1,15 +1,15 @@
 import { Coordinate, Dimensions } from "@/types/types";
-import { CanvasNode } from "./CanvasNode";
+import { Node } from "./Node";
 
 export class Canvas {
-    private nodes: Map<string, CanvasNode>;
+    private nodes: Map<string, Node>;
     // private version: string = "1.0;"
 
     constructor() {
         this.nodes = new Map();
     }
 
-    addNode(node: CanvasNode): void {
+    addNode(node: Node): void {
         this.nodes.set(node.getId(), node);
     }
 
@@ -17,11 +17,11 @@ export class Canvas {
         this.nodes.delete(nodeId);
     }
 
-    getNode(nodeId: string): CanvasNode | undefined {
+    getNode(nodeId: string): Node | undefined {
         return this.nodes.get(nodeId);
     }
 
-    getAllNodes(): CanvasNode[] {
+    getAllNodes(): Node[] {
         return Array.from(this.nodes.values());
     }
 
@@ -44,7 +44,7 @@ export class Canvas {
     }
 
     //TODO: remove this if we are not going to do render culling in the demo
-    getNodesInViewport(viewportBounds: { topLeft: Coordinate; bottomRight: Coordinate }): CanvasNode[] {
+    getNodesInViewport(viewportBounds: { topLeft: Coordinate; bottomRight: Coordinate }): Node[] {
         return this.getAllNodes().filter(node => {
             const pos = node.getPosition();
             const dim = node.getDimensions();
