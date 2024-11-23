@@ -1,15 +1,19 @@
+import { CanvasManager } from "./CanvasManager";
+import { MarkdownNode } from "./MarkdownNode";
+
 // ToolbarManager.ts
 export class ToolbarManager {
     private container: HTMLElement;
     private onNodeCreate?: (type: string , date: any) => void;
+    private canvasManager: CanvasManager;
 
 
-    constructor(containerId: string, onNodeCreate?: (type: string , date: any) => void) {
+    constructor(containerId: string, canvasManager: CanvasManager) {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Toolbar container not found');
         
         this.container = container;
-        this.onNodeCreate = onNodeCreate;
+        this.canvasManager = canvasManager;
         this.setupToolbar();
     }
 
@@ -20,12 +24,12 @@ export class ToolbarManager {
         const tools = [
             { id: 'hand', icon: '✋', title: 'Pan Mode' },
             { id: 'select', icon: '⬚', title: 'Select Mode' },
-            { id: 'text', icon: 'T', title: 'Text Mode' },
-            { id: 'upload', icon: '↑', title: 'Upload File', action: this.handleCSVUpload.bind(this) }
+            { id: 'markdown', icon: '📝', title: 'Add Markdown', action: () => this.handleMarkdownCreate() },  // This line here
+            { id: 'upload', icon: '↑', title: 'Upload File', action: () => this.handleCSVUpload() }
         ];
     
         tools.forEach((tool, index) => {
-            if (index === 3) {
+            if (index === 2) { // Add divider before markdown button
                 const divider = document.createElement('div');
                 divider.className = 'toolbar-divider';
                 toolbar.appendChild(divider);
@@ -37,7 +41,6 @@ export class ToolbarManager {
             button.setAttribute('data-tool', tool.id);
             button.textContent = tool.icon;
     
-            // Add specific action if exists, otherwise use default log
             button.addEventListener('click', tool.action || (() => console.log('Clicked:', tool.id)));
             toolbar.appendChild(button);
         });
@@ -65,5 +68,11 @@ export class ToolbarManager {
         };
         
         input.click();
+    }
+
+    private handleMarkdownCreate(): void {
+        // Create new markdown node directly
+        const node = new MarkdownNode();
+        document.getElementById('canvas-nodes')?.appendChild(node.getElement());
     }
 }

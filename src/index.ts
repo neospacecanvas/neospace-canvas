@@ -3,6 +3,7 @@ import { CanvasManager } from './base/CanvasManager';
 import { ToolbarManager } from './base/ToolbarManager';
 import './styles/canvas.css';
 import './styles/toolbar.css';
+import './styles/markdown.css';
 import { parseCSV } from './utils/csvParser';
 
 document.addEventListener('DOMContentLoaded', () => {

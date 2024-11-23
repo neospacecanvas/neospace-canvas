@@ -1,0 +1,65 @@
+.markdown-node {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: 2px solid #4b5563;
+    z-index: 1;
+}
+
+.markdown-node:hover {
+    z-index: 2;
+}
+
+.markdown-node .node-header {
+    padding: 8px 12px;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: grab;
+    user-select: none;
+    border-radius: 6px 6px 0 0;
+}
+
+.markdown-node .node-content {
+    padding: 12px;
+    min-height: 100px;
+    outline: none;
+}
+
+.markdown-node .node-content p {
+    margin: 0 0 8px 0;
+}
+
+.markdown-node .node-content ul,
+.markdown-node .node-content ol {
+    margin: 0 0 8px 0;
+    padding-left: 24px;
+}
+
+.markdown-node.is-dragging {
+    opacity: 0.9;
+    cursor: grabbing;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 3;
+}
+
+.markdown-node.is-selected {
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    z-index: 2;
+}
+
+.node-toolbar {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    z-index: 4;
+    border: 1px solid #e5e7eb;
+}
+
+.toolbar-butto
