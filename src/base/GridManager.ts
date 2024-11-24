@@ -1,14 +1,12 @@
-import { ViewportState } from '@/types/canvas';
+import { ViewportState } from '@/types/viewport';
+import { ViewportManager } from './Viewport';
 
 export class GridManager {
     private readonly container: HTMLElement;
-    private scale: number = 1;
-    private panOffset: { x: number; y: number } = { x: 0, y: 0 };
     private isDragging: boolean = false;
     private lastMousePos: { x: number; y: number } | null = null;
+    private viewportManager: ViewportManager;
 
-    private readonly MIN_SCALE = 0.1;
-    private readonly MAX_SCALE = 4.0;
     private readonly GRID_SIZE = 20;
     private readonly GRID_COLOR = '#a5d8ff';
 
@@ -16,22 +14,18 @@ export class GridManager {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Grid container not found');
         this.container = container;
-
+        
+        this.viewportManager = ViewportManager.getInstance();
+        
         this.setupContainer();
         this.setupEventListeners();
-        this.updateTransform();
     }
 
     private setupContainer(): void {
+        // Grid setup remains the same since it uses CSS variables directly
         this.container.style.backgroundImage = `radial-gradient(${this.GRID_COLOR} calc(var(--scale)*0.5px + 0.5px), transparent 0)`;
         this.container.style.backgroundSize = `calc(var(--scale) * ${this.GRID_SIZE}px) calc(var(--scale) * ${this.GRID_SIZE}px)`;
         this.container.style.backgroundPosition = 'calc(var(--pan-x) - 19px) calc(var(--pan-y) - 19px)';
-    }
-
-    private updateTransform(): void {
-        document.body.style.setProperty('--scale', this.scale.toString());
-        document.body.style.setProperty('--pan-x', `${this.panOffset.x}px`);
-        document.body.style.setProperty('--pan-y', `${this.panOffset.y}px`);
     }
 
     private setupEventListeners(): void {
@@ -44,18 +38,18 @@ export class GridManager {
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
 
+                const currentState = this.viewportManager.getState();
                 const delta = e.deltaY * -0.001;
-                const newScale = Math.min(Math.max(this.MIN_SCALE,
-                    this.scale * (1 + delta)), this.MAX_SCALE);
-                const scaleFactor = newScale / this.scale;
+                const newScale = currentState.scale * (1 + delta);
+                const scaleFactor = newScale / currentState.scale;
 
-                this.panOffset = {
-                    x: this.panOffset.x + (x - this.panOffset.x) * (1 - scaleFactor),
-                    y: this.panOffset.y + (y - this.panOffset.y) * (1 - scaleFactor)
+                const newState: ViewportState = {
+                    scale: newScale,
+                    panX: currentState.panX + (x - currentState.panX) * (1 - scaleFactor),
+                    panY: currentState.panY + (y - currentState.panY) * (1 - scaleFactor)
                 };
 
-                this.scale = newScale;
-                this.updateTransform();
+                this.viewportManager.updateState(newState);
             }
         }, { passive: false });
 
@@ -73,14 +67,15 @@ export class GridManager {
 
             const dx = e.clientX - this.lastMousePos.x;
             const dy = e.clientY - this.lastMousePos.y;
-
-            this.panOffset = {
-                x: this.panOffset.x + dx,
-                y: this.panOffset.y + dy
-            };
+            
+            const currentState = this.viewportManager.getState();
+            this.viewportManager.updateState({
+                ...currentState,
+                panX: currentState.panX + dx,
+                panY: currentState.panY + dy
+            });
 
             this.lastMousePos = { x: e.clientX, y: e.clientY };
-            this.updateTransform();
         });
 
         window.addEventListener('mouseup', () => {
@@ -88,18 +83,5 @@ export class GridManager {
             this.lastMousePos = null;
             this.container.style.cursor = '';
         });
-    }
-
-    public getViewportState(): ViewportState {
-        return {
-            scale: this.scale,
-            panOffset: { x: this.panOffset.x, y: this.panOffset.y }
-        };
-    }
-
-    public setViewportState(state: ViewportState): void {
-        this.scale = state.scale;
-        this.panOffset = { ...state.panOffset };
-        this.updateTransform();
     }
 }

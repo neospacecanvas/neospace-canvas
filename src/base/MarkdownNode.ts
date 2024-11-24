@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { ViewportManager } from './Viewport';
 
 export class MarkdownNode {
     private element: HTMLElement;
@@ -7,12 +8,15 @@ export class MarkdownNode {
     private toolbar: HTMLElement;
     private isDragging: boolean = false;
     private isSpacePressed: boolean = false;
-    private currentScale: number = 1;
     private readonly TOOLBAR_OFFSET = -55;
     private editor: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
+    private viewportManager: ViewportManager;
+    private unsubscribe: () => void;
     
     constructor(x: number = window.innerWidth/2, y: number = window.innerHeight/2) {
+        this.viewportManager = ViewportManager.getInstance();
+        
         this.element = document.createElement('div');
         this.element.id = 'node-' + uuidv4();
         this.element.className = 'node markdown-node';
@@ -21,45 +25,17 @@ export class MarkdownNode {
         this.element.style.width = '480px';
         this.element.style.position = 'absolute';
         
-        // Get initial scale from CSS variable
-        const scaleStr = getComputedStyle(document.documentElement)
-            .getPropertyValue('--scale')
-            .trim();
-        this.currentScale = parseFloat(scaleStr) || 1;
-
-        // Listen for scale changes
-        const observer = new MutationObserver(() => {
-            const newScaleStr = getComputedStyle(document.documentElement)
-                .getPropertyValue('--scale')
-                .trim();
-            this.currentScale = parseFloat(newScaleStr) || 1;
-        });
-
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['style']
-        });
-        
         this.setupHeader();
         this.setupContent();
         this.setupToolbar();
         this.setupDrag();
         this.setupResize();
         this.setupHoverEffects();
-    }
-
-    private getTransformedPoint(clientX: number, clientY: number): { x: number, y: number } {
-        const canvasNodes = document.getElementById('canvas-nodes');
-        if (!canvasNodes) return { x: clientX, y: clientY };
-
-        const rect = canvasNodes.getBoundingClientRect();
-        const panX = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pan-x')) || 0;
-        const panY = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pan-y')) || 0;
-
-        return {
-            x: (clientX - rect.left - panX) / this.currentScale,
-            y: (clientY - rect.top - panY) / this.currentScale
-        };
+        
+        this.unsubscribe = this.viewportManager.subscribe(() => {
+            // We don't need to do anything here since CSS handles the transforms
+            // But we could if we needed to react to viewport changes
+        });
     }
 
     private parseMarkdown(text: string): string {
@@ -154,8 +130,6 @@ export class MarkdownNode {
         this.element.appendChild(this.content);
     }
 
-    
-
     private setupToolbar() {
         this.toolbar = document.createElement('div');
         this.toolbar.className = 'node-toolbar';
@@ -225,8 +199,8 @@ export class MarkdownNode {
     private setupDrag() {
         let startX: number;
         let startY: number;
-        let startLeft: number;
-        let startTop: number;
+        let currentLeft: number;
+        let currentTop: number;
         
         this.header.addEventListener('mousedown', (e) => {
             if (this.isSpacePressed) return;
@@ -234,12 +208,12 @@ export class MarkdownNode {
             this.isDragging = true;
             this.element.classList.add('is-dragging');
             
-            const startPoint = this.getTransformedPoint(e.clientX, e.clientY);
-            startX = startPoint.x;
-            startY = startPoint.y;
+            const { scale } = this.viewportManager.getState();
+            startX = e.clientX;
+            startY = e.clientY;
             
-            startLeft = parseInt(this.element.style.left) || 0;
-            startTop = parseInt(this.element.style.top) || 0;
+            currentLeft = parseInt(this.element.style.left) || 0;
+            currentTop = parseInt(this.element.style.top) || 0;
             
             e.stopPropagation();
         });
@@ -247,12 +221,20 @@ export class MarkdownNode {
         window.addEventListener('mousemove', (e) => {
             if (!this.isDragging) return;
             
-            const currentPoint = this.getTransformedPoint(e.clientX, e.clientY);
-            const dx = currentPoint.x - startX;
-            const dy = currentPoint.y - startY;
+            const { scale } = this.viewportManager.getState();
+            const dx = (e.clientX - startX) / scale;
+            const dy = (e.clientY - startY) / scale;
             
-            this.element.style.left = `${startLeft + dx}px`;
-            this.element.style.top = `${startTop + dy}px`;
+            // Update the current position
+            currentLeft += dx;
+            currentTop += dy;
+            
+            this.element.style.left = `${currentLeft}px`;
+            this.element.style.top = `${currentTop}px`;
+            
+            // Update start coordinates for next movement
+            startX = e.clientX;
+            startY = e.clientY;
         });
         
         window.addEventListener('mouseup', () => {
@@ -264,13 +246,8 @@ export class MarkdownNode {
     }
 
     private setupResize() {
-        const minWidth = 200;
-        const maxWidth = 800;
-        const minHeight = 150;
-        const maxHeight = 600;
-
-        // Create resize handles for corners only
         const handles = ['se', 'sw', 'ne', 'nw'];
+        
         handles.forEach(direction => {
             const handle = document.createElement('div');
             handle.className = `resize-handle resize-${direction}`;
@@ -286,10 +263,8 @@ export class MarkdownNode {
             handle.addEventListener('mousedown', (e) => {
                 isResizing = true;
                 e.stopPropagation();
-
-                const startPoint = this.getTransformedPoint(e.clientX, e.clientY);
-                startX = startPoint.x;
-                startY = startPoint.y;
+                startX = e.clientX;
+                startY = e.clientY;
                 
                 startWidth = this.element.offsetWidth;
                 startHeight = this.element.offsetHeight;
@@ -302,32 +277,30 @@ export class MarkdownNode {
             window.addEventListener('mousemove', (e) => {
                 if (!isResizing) return;
 
-                const currentPoint = this.getTransformedPoint(e.clientX, e.clientY);
-                const dx = currentPoint.x - startX;
-                const dy = currentPoint.y - startY;
+                const { scale } = this.viewportManager.getState();
+                const dx = (e.clientX - startX) / scale;
+                const dy = (e.clientY - startY) / scale;
 
                 let newWidth = startWidth;
                 let newHeight = startHeight;
                 let newLeft = startLeft;
                 let newTop = startTop;
 
-                // Handle horizontal resizing
                 if (direction.includes('e')) {
-                    newWidth = Math.min(Math.max(startWidth + dx, minWidth), maxWidth);
+                    newWidth = Math.min(Math.max(startWidth + dx, 200), 800);
                 } else if (direction.includes('w')) {
                     const proposedWidth = startWidth - dx;
-                    if (proposedWidth >= minWidth && proposedWidth <= maxWidth) {
+                    if (proposedWidth >= 200 && proposedWidth <= 800) {
                         newWidth = proposedWidth;
                         newLeft = startLeft + dx;
                     }
                 }
 
-                // Handle vertical resizing
                 if (direction.includes('s')) {
-                    newHeight = Math.min(Math.max(startHeight + dy, minHeight), maxHeight);
+                    newHeight = Math.min(Math.max(startHeight + dy, 150), 600);
                 } else if (direction.includes('n')) {
                     const proposedHeight = startHeight - dy;
-                    if (proposedHeight >= minHeight && proposedHeight <= maxHeight) {
+                    if (proposedHeight >= 150 && proposedHeight <= 600) {
                         newHeight = proposedHeight;
                         newTop = startTop + dy;
                     }
@@ -372,6 +345,11 @@ export class MarkdownNode {
             newNode.preview.innerHTML = this.parseMarkdown(this.editor.innerText);
         }
         document.getElementById('canvas-nodes')?.appendChild(newNode.element);
+    }
+
+    public destroy() {
+        this.unsubscribe?.();
+        this.element.remove();
     }
 
     getElement(): HTMLElement {
