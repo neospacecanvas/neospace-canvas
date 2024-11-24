@@ -208,7 +208,6 @@ export class MarkdownNode {
             this.isDragging = true;
             this.element.classList.add('is-dragging');
             
-            const { scale } = this.viewportManager.getState();
             startX = e.clientX;
             startY = e.clientY;
             
