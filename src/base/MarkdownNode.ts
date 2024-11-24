@@ -7,8 +7,10 @@ export class MarkdownNode {
     private toolbar: HTMLElement;
     private isDragging: boolean = false;
     private isSpacePressed: boolean = false;
-    private scale: number = 1;
+    private currentScale: number = 1;
     private readonly TOOLBAR_OFFSET = -55;
+    private editor: HTMLDivElement | null = null;
+    private preview: HTMLDivElement | null = null;
     
     constructor(x: number = window.innerWidth/2, y: number = window.innerHeight/2) {
         this.element = document.createElement('div');
@@ -19,13 +21,70 @@ export class MarkdownNode {
         this.element.style.width = '480px';
         this.element.style.position = 'absolute';
         
+        // Get initial scale from CSS variable
+        const scaleStr = getComputedStyle(document.documentElement)
+            .getPropertyValue('--scale')
+            .trim();
+        this.currentScale = parseFloat(scaleStr) || 1;
+
+        // Listen for scale changes
+        const observer = new MutationObserver(() => {
+            const newScaleStr = getComputedStyle(document.documentElement)
+                .getPropertyValue('--scale')
+                .trim();
+            this.currentScale = parseFloat(newScaleStr) || 1;
+        });
+
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['style']
+        });
+        
         this.setupHeader();
         this.setupContent();
         this.setupToolbar();
         this.setupDrag();
         this.setupResize();
         this.setupHoverEffects();
-        this.setupFormatTracking();
+    }
+
+    private getTransformedPoint(clientX: number, clientY: number): { x: number, y: number } {
+        const canvasNodes = document.getElementById('canvas-nodes');
+        if (!canvasNodes) return { x: clientX, y: clientY };
+
+        const rect = canvasNodes.getBoundingClientRect();
+        const panX = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pan-x')) || 0;
+        const panY = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pan-y')) || 0;
+
+        return {
+            x: (clientX - rect.left - panX) / this.currentScale,
+            y: (clientY - rect.top - panY) / this.currentScale
+        };
+    }
+
+    private parseMarkdown(text: string): string {
+        return text
+            // Headers (## Title)
+            .replace(/^(#{1,6})\s+(.+)$/gm, (_, level, content) => {
+                const size = 7 - level.length;
+                return `<h${level.length} style="font-size: ${size * 0.25}rem; font-weight: bold; margin: 0.5em 0">${content}</h${level.length}>`;
+            })
+            // Tags (#tag)
+            .replace(/(?:^|\s)(#[a-zA-Z]\w*)/g, 
+                ' <span style="background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 4px; font-size: 0.9em">$1</span>')
+            // Code blocks
+            .replace(/```([\s\S]*?)```/g, '<pre style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 8px 0"><code>$1</code></pre>')
+            // Inline code
+            .replace(/`([^`]+)`/g, '<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px">$1</code>')
+            // Bold
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Italic
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Lists
+            .replace(/^\s*[-*+]\s+(.+)$/gm, '<li style="margin-left: 20px">$1</li>')
+            .replace(/(<li.*<\/li>)/s, '<ul style="list-style-type: disc; margin: 8px 0">$1</ul>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
     }
 
     private setupHeader() {
@@ -38,25 +97,64 @@ export class MarkdownNode {
     private setupContent() {
         this.content = document.createElement('div');
         this.content.className = 'node-content';
-        this.content.contentEditable = 'true';
-        this.content.innerHTML = '<p>Click to edit text</p>';
         
-        this.content.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.stopPropagation();
+        this.editor = document.createElement('div');
+        this.editor.className = 'markdown-editor';
+        this.editor.contentEditable = 'true';
+        this.editor.style.display = 'none';
+        this.editor.style.minHeight = '100px';
+        this.editor.style.padding = '12px';
+        this.editor.style.outline = 'none';
+        
+        this.preview = document.createElement('div');
+        this.preview.className = 'markdown-preview placeholder';
+        this.preview.innerHTML = 'Type markdown here...';
+        this.preview.style.minHeight = '100px';
+        this.preview.style.padding = '12px';
+        
+        this.editor.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') e.stopPropagation();
+        });
+        
+        this.preview.addEventListener('dblclick', () => {
+            this.editor.style.display = 'block';
+            this.preview.style.display = 'none';
+            this.editor.focus();
+            if (this.editor.innerText === 'Type markdown here...') {
+                this.editor.innerText = '';
             }
         });
         
-        this.content.addEventListener('paste', (e) => {
-            e.preventDefault();
-            const text = e.clipboardData?.getData('text/plain');
-            if (text) {
-                document.execCommand('insertText', false, text);
+        this.editor.addEventListener('input', () => {
+            const content = this.editor.innerText;
+            this.preview.innerHTML = this.parseMarkdown(content);
+            if (content && content !== 'Type markdown here...') {
+                this.preview.classList.remove('placeholder');
+            } else {
+                this.preview.classList.add('placeholder');
             }
         });
-
+        
+        this.editor.addEventListener('blur', (e) => {
+            if (!this.element.contains(e.relatedTarget as Node)) {
+                this.editor.style.display = 'none';
+                this.preview.style.display = 'block';
+                if (!this.editor.innerText.trim()) {
+                    this.editor.innerText = 'Type markdown here...';
+                    this.preview.innerHTML = 'Type markdown here...';
+                    this.preview.classList.add('placeholder');
+                }
+            }
+        });
+        
+        this.editor.innerText = 'Type markdown here...';
+        
+        this.content.appendChild(this.editor);
+        this.content.appendChild(this.preview);
         this.element.appendChild(this.content);
     }
+
+    
 
     private setupToolbar() {
         this.toolbar = document.createElement('div');
@@ -65,30 +163,25 @@ export class MarkdownNode {
         this.toolbar.style.top = `${this.TOOLBAR_OFFSET}px`;
         
         const tools = [
-            { icon: '𝐁', label: 'Bold', action: () => this.toggleFormat('bold'), isFormat: true, format: 'bold' },
-            { icon: '𝐼', label: 'Italic', action: () => this.toggleFormat('italic'), isFormat: true, format: 'italic' },
-            { icon: '̲U̲', label: 'Underline', action: () => this.toggleFormat('underline'), isFormat: true, format: 'underline' },
-            { icon: '•', label: 'Bullet List', action: () => document.execCommand('insertUnorderedList'), isFormat: false },
-            { icon: '1.', label: 'Numbered List', action: () => document.execCommand('insertOrderedList'), isFormat: false },
-            { icon: '📋', label: 'Duplicate', action: (e: Event) => {
-                e.stopPropagation();
-                this.duplicate();
-            }},
-            { icon: '🗑️', label: 'Delete', action: (e: Event) => {
-                e.stopPropagation();
-                this.element.remove();
-            }}
+            { icon: 'H2', label: 'Header', action: () => this.insertMarkdown('## ') },
+            { icon: 'B', label: 'Bold', action: () => this.insertMarkdown('**', '**') },
+            { icon: 'I', label: 'Italic', action: () => this.insertMarkdown('*', '*') },
+            { icon: '`', label: 'Code', action: () => this.insertMarkdown('`', '`') },
+            { icon: '•', label: 'List', action: () => this.insertMarkdown('- ') },
+            { icon: '#', label: 'Tag', action: () => this.insertMarkdown('#') },
+            { icon: '📋', label: 'Duplicate', action: () => this.duplicate() },
+            { icon: '🗑️', label: 'Delete', action: () => this.element.remove() }
         ];
 
         tools.forEach(tool => {
             const button = document.createElement('button');
             button.textContent = tool.icon;
             button.title = tool.label;
-            if (tool.isFormat) {
-                button.setAttribute('data-format', tool.format);
-            }
-            button.onclick = tool.action as any;
-            button.className = `toolbar-button${tool.isFormat ? ' format-button' : ''}`;
+            button.className = 'toolbar-button';
+            button.onclick = (e) => {
+                e.stopPropagation();
+                tool.action();
+            };
             this.toolbar.appendChild(button);
         });
 
@@ -112,49 +205,28 @@ export class MarkdownNode {
         });
     }
 
-    private toggleFormat(format: string) {
-        document.execCommand(format);
-        this.updateFormatButtons();
-    }
+    private insertMarkdown(prefix: string, suffix: string = '') {
+        if (this.editor.style.display === 'none') {
+            this.editor.style.display = 'block';
+            this.preview.style.display = 'none';
+            this.editor.focus();
+        }
 
-    private setupFormatTracking() {
-        document.addEventListener('selectionchange', () => {
-            const selection = window.getSelection();
-            if (!selection?.rangeCount) return;
-            
-            const range = selection.getRangeAt(0);
-            if (!this.content.contains(range.commonAncestorContainer)) return;
-
-            this.updateFormatButtons();
-        });
-
-        this.content.addEventListener('input', () => {
-            this.updateFormatButtons();
-        });
-    }
-
-    private updateFormatButtons() {
-        const formats = {
-            'bold': document.queryCommandState('bold'),
-            'italic': document.queryCommandState('italic'),
-            'underline': document.queryCommandState('underline')
-        };
-
-        this.toolbar.querySelectorAll('.format-button').forEach((button: Element) => {
-            const format = button.getAttribute('data-format');
-            if (format && format in formats) {
-                if (formats[format as keyof typeof formats]) {
-                    button.classList.add('active');
-                } else {
-                    button.classList.remove('active');
-                }
-            }
-        });
+        const selection = window.getSelection();
+        const range = selection?.getRangeAt(0);
+        
+        if (range) {
+            const text = prefix + range.toString() + suffix;
+            document.execCommand('insertText', false, text);
+            this.preview.innerHTML = this.parseMarkdown(this.editor.innerText);
+        }
     }
 
     private setupDrag() {
-        let startX = 0;
-        let startY = 0;
+        let startX: number;
+        let startY: number;
+        let startLeft: number;
+        let startTop: number;
         
         this.header.addEventListener('mousedown', (e) => {
             if (this.isSpacePressed) return;
@@ -162,8 +234,12 @@ export class MarkdownNode {
             this.isDragging = true;
             this.element.classList.add('is-dragging');
             
-            startX = e.clientX;
-            startY = e.clientY;
+            const startPoint = this.getTransformedPoint(e.clientX, e.clientY);
+            startX = startPoint.x;
+            startY = startPoint.y;
+            
+            startLeft = parseInt(this.element.style.left) || 0;
+            startTop = parseInt(this.element.style.top) || 0;
             
             e.stopPropagation();
         });
@@ -171,17 +247,12 @@ export class MarkdownNode {
         window.addEventListener('mousemove', (e) => {
             if (!this.isDragging) return;
             
-            const dx = (e.clientX - startX) / this.scale;
-            const dy = (e.clientY - startY) / this.scale;
+            const currentPoint = this.getTransformedPoint(e.clientX, e.clientY);
+            const dx = currentPoint.x - startX;
+            const dy = currentPoint.y - startY;
             
-            const currentLeft = parseInt(this.element.style.left) || 0;
-            const currentTop = parseInt(this.element.style.top) || 0;
-            
-            this.element.style.left = `${currentLeft + dx}px`;
-            this.element.style.top = `${currentTop + dy}px`;
-            
-            startX = e.clientX;
-            startY = e.clientY;
+            this.element.style.left = `${startLeft + dx}px`;
+            this.element.style.top = `${startTop + dy}px`;
         });
         
         window.addEventListener('mouseup', () => {
@@ -193,49 +264,89 @@ export class MarkdownNode {
     }
 
     private setupResize() {
-        const directions = ['e', 'w'];
-        const handles = directions.map(direction => {
+        const minWidth = 200;
+        const maxWidth = 800;
+        const minHeight = 150;
+        const maxHeight = 600;
+
+        // Create resize handles for corners only
+        const handles = ['se', 'sw', 'ne', 'nw'];
+        handles.forEach(direction => {
             const handle = document.createElement('div');
             handle.className = `resize-handle resize-${direction}`;
-            return handle;
-        });
-        
-        let isResizing = false;
-        let startWidth: number;
-        let startX: number;
-        
-        handles.forEach(handle => {
+            
+            let isResizing = false;
+            let startWidth: number;
+            let startHeight: number;
+            let startX: number;
+            let startY: number;
+            let startLeft: number;
+            let startTop: number;
+            
             handle.addEventListener('mousedown', (e) => {
                 isResizing = true;
-                startWidth = this.element.offsetWidth;
-                startX = e.clientX;
                 e.stopPropagation();
-                document.body.style.cursor = 'ew-resize';
+
+                const startPoint = this.getTransformedPoint(e.clientX, e.clientY);
+                startX = startPoint.x;
+                startY = startPoint.y;
+                
+                startWidth = this.element.offsetWidth;
+                startHeight = this.element.offsetHeight;
+                startLeft = parseInt(this.element.style.left) || 0;
+                startTop = parseInt(this.element.style.top) || 0;
+
+                document.body.style.cursor = `${direction}-resize`;
             });
-            
-            this.element.appendChild(handle);
-        });
-        
-        window.addEventListener('mousemove', (e) => {
-            if (!isResizing) return;
-            
-            const dx = (e.clientX - startX) / this.scale;
-            const side = (e.target as Element).className.includes('resize-e') ? 1 : -1;
-            const newWidth = startWidth + (dx * side);
-            
-            if (newWidth >= 200 && newWidth <= 800) {
-                this.element.style.width = `${newWidth}px`;
-                if (side === -1) {
-                    this.element.style.left = `${parseInt(this.element.style.left) + dx}px`;
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                const currentPoint = this.getTransformedPoint(e.clientX, e.clientY);
+                const dx = currentPoint.x - startX;
+                const dy = currentPoint.y - startY;
+
+                let newWidth = startWidth;
+                let newHeight = startHeight;
+                let newLeft = startLeft;
+                let newTop = startTop;
+
+                // Handle horizontal resizing
+                if (direction.includes('e')) {
+                    newWidth = Math.min(Math.max(startWidth + dx, minWidth), maxWidth);
+                } else if (direction.includes('w')) {
+                    const proposedWidth = startWidth - dx;
+                    if (proposedWidth >= minWidth && proposedWidth <= maxWidth) {
+                        newWidth = proposedWidth;
+                        newLeft = startLeft + dx;
+                    }
                 }
-            }
-        });
-        
-        window.addEventListener('mouseup', () => {
-            if (isResizing) {
-                isResizing = false;
-                document.body.style.cursor = '';
-            }
+
+                // Handle vertical resizing
+                if (direction.includes('s')) {
+                    newHeight = Math.min(Math.max(startHeight + dy, minHeight), maxHeight);
+                } else if (direction.includes('n')) {
+                    const proposedHeight = startHeight - dy;
+                    if (proposedHeight >= minHeight && proposedHeight <= maxHeight) {
+                        newHeight = proposedHeight;
+                        newTop = startTop + dy;
+                    }
+                }
+
+                this.element.style.width = `${newWidth}px`;
+                this.element.style.height = `${newHeight}px`;
+                this.element.style.left = `${newLeft}px`;
+                this.element.style.top = `${newTop}px`;
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = '';
+                }
+            });
+
+            this.element.appendChild(handle);
         });
     }
 
@@ -251,17 +362,15 @@ export class MarkdownNode {
         });
     }
 
-    private toggleLock() {
-        const isLocked = this.element.classList.toggle('locked');
-        this.header.style.cursor = isLocked ? 'default' : 'grab';
-    }
-
     private duplicate() {
         const newNode = new MarkdownNode(
             parseInt(this.element.style.left) + 20,
             parseInt(this.element.style.top) + 20
         );
-        newNode.content.innerHTML = this.content.innerHTML;
+        if (this.editor) {
+            newNode.editor.innerText = this.editor.innerText;
+            newNode.preview.innerHTML = this.parseMarkdown(this.editor.innerText);
+        }
         document.getElementById('canvas-nodes')?.appendChild(newNode.element);
     }
 

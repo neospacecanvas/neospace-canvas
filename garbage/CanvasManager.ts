@@ -170,8 +170,8 @@ export class CanvasManager {
         window.removeEventListener('keydown', this.handleKeyDown.bind(this));
         window.removeEventListener('keyup', this.handleKeyUp.bind(this));
         window.removeEventListener('resize', this.handleResize.bind(this));
-
-        this.gridManager.destroy();
+        //TODO: put this cleanup of grid back
+        // this.gridManager.destroy();
         this.nodes.clear();
         this.nodesContainer.innerHTML = '';
     }

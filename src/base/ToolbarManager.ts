@@ -1,19 +1,17 @@
-import { CanvasManager } from "./CanvasManager";
+
 import { MarkdownNode } from "./MarkdownNode";
 
 // ToolbarManager.ts
 export class ToolbarManager {
     private container: HTMLElement;
     private onNodeCreate?: (type: string , date: any) => void;
-    private canvasManager: CanvasManager;
 
 
-    constructor(containerId: string, canvasManager: CanvasManager) {
+    constructor(containerId: string) {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Toolbar container not found');
         
         this.container = container;
-        this.canvasManager = canvasManager;
         this.setupToolbar();
     }
 
