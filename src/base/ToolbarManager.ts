@@ -1,17 +1,17 @@
-
 import { MarkdownNode } from "./MarkdownNode";
+import { CSVNode } from "./CSVNode";
 
 // ToolbarManager.ts
 export class ToolbarManager {
     private container: HTMLElement;
-    private onNodeCreate?: (type: string , date: any) => void;
+    private onNodeCreate?: (type: string, data: any) => void;
 
-
-    constructor(containerId: string) {
+    constructor(containerId: string, onNodeCreate?: (type: string, data: any) => void) {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Toolbar container not found');
         
         this.container = container;
+        this.onNodeCreate = onNodeCreate;
         this.setupToolbar();
     }
 
@@ -22,12 +22,12 @@ export class ToolbarManager {
         const tools = [
             { id: 'hand', icon: '✋', title: 'Pan Mode' },
             { id: 'select', icon: '⬚', title: 'Select Mode' },
-            { id: 'markdown', icon: '📝', title: 'Add Markdown', action: () => this.handleMarkdownCreate() },  // This line here
+            { id: 'markdown', icon: '📝', title: 'Add Markdown', action: () => this.handleMarkdownCreate() },
             { id: 'upload', icon: '↑', title: 'Upload File', action: () => this.handleCSVUpload() }
         ];
     
         tools.forEach((tool, index) => {
-            if (index === 2) { // Add divider before markdown button
+            if (index === 2) {
                 const divider = document.createElement('div');
                 divider.className = 'toolbar-divider';
                 toolbar.appendChild(divider);
@@ -53,15 +53,28 @@ export class ToolbarManager {
         
         input.onchange = async (e: Event) => {
             const file = (e.target as HTMLInputElement).files?.[0];
-            if (!file || !this.onNodeCreate) return;
+            if (!file) return;
             
             try {
-                console.log('File selected:', file.name);
-                const text = await file.text();
-                console.log('File content:', text.substring(0, 100) + '...');
-                this.onNodeCreate('csv', { fileName: file.name, content: text });
+                // First, read the file content
+                const content = await file.text();
+                
+                // Create the node data
+                const nodeData = {
+                    fileName: file.name,
+                    content: content
+                };
+
+                // Notify parent through callback
+                if (this.onNodeCreate) {
+                    this.onNodeCreate('csv', nodeData);
+                } else {
+                    // Fallback to direct creation if no callback provided
+                    const node = new CSVNode(file.name);
+                    document.getElementById('canvas-nodes')?.appendChild(node.getElement());
+                }
             } catch (error) {
-                console.error('Error reading CSV file:', error);
+                console.error('Error handling CSV upload:', error);
             }
         };
         
@@ -69,8 +82,12 @@ export class ToolbarManager {
     }
 
     private handleMarkdownCreate(): void {
-        // Create new markdown node directly
-        const node = new MarkdownNode();
-        document.getElementById('canvas-nodes')?.appendChild(node.getElement());
+        if (this.onNodeCreate) {
+            this.onNodeCreate('markdown', { content: '' });
+        } else {
+            // Fallback to direct creation
+            const node = new MarkdownNode();
+            document.getElementById('canvas-nodes')?.appendChild(node.getElement());
+        }
     }
 }
