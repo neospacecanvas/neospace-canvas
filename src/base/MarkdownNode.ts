@@ -341,7 +341,7 @@ export class MarkdownNode {
         );
         if (this.editor) {
             newNode.editor.innerText = this.editor.innerText;
-            newNode.preview.innerHTML = this.parseMarkdown(this.editor.innerText);
+            newNode.preview.innerHTML = this.parseMarkdown(newNode.editor.innerText);
         }
         document.getElementById('canvas-nodes')?.appendChild(newNode.element);
     }
