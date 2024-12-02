@@ -46,6 +46,13 @@ export class CSVNode {
         icon.src = '../../public/assets/csv.png';
         icon.className = 'csv-icon';
         icon.alt = 'CSV file';
+        icon.draggable = false; // Prevent image dragging
+        
+        // Prevent default drag behaviors
+        icon.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
+        
         iconContainer.appendChild(icon);
         
         // Filename
@@ -56,6 +63,11 @@ export class CSVNode {
         content.appendChild(iconContainer);
         content.appendChild(fileNameElement);
         this.element.appendChild(content);
+        
+        // Prevent drag events on the entire content
+        content.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
     }
 
     private setupToolbar() {

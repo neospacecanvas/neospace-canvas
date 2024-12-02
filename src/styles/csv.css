@@ -1,0 +1,57 @@
+.csv-node {
+    background: white;
+    border-radius: 8px;
+    transition: transform 0.2s ease;
+    user-select: none;
+}
+
+.csv-node.is-dragging {
+    cursor: grabbing;
+    opacity: 0.8;
+    z-index: 3;
+}
+
+.csv-node.is-selected {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.csv-node .node-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    gap: 8px;
+    height: 100%;
+}
+
+.csv-node .node-icon {
+    width: 64px;  /* Increased from 48px */
+    height: 64px; /* Increased from 48px */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.csv-node .csv-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none; /* Prevent image dragging */
+    user-select: none;   /* Prevent image selection */
+    -webkit-user-drag: none; /* Prevent image dragging in webkit browsers */
+}
+
+.csv-node .node-filename {
+    font-size: 12px;
+    color: #4b5563;
+    text-align: center;
+    word-break: break-word;
+    max-width: 90px;
+    line-height: 1.2;
+    pointer-events: none; /* Prevent text selection/dragging */
+    user-select: none;    /* Prevent text selection */
+}
+
+/* Rest of the CSS remains the same */
