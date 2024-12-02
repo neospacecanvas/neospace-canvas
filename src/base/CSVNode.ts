@@ -1,5 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import { ViewportManager } from './Viewport';
+import { NodeStore } from './NodeStore';
+import { NodeType } from '../types/types';
 
 export class CSVNode {
     private element: HTMLElement;
@@ -8,29 +9,61 @@ export class CSVNode {
     private isSpacePressed: boolean = false;
     private readonly TOOLBAR_OFFSET = -45;
     private viewportManager: ViewportManager;
-    private unsubscribe: () => void;
+    private nodeStore: NodeStore;
+    private id: string;
+    private unsubscribeViewport: () => void;
+    private unsubscribeStore: () => void;
     
-    constructor(fileName: string, x: number = window.innerWidth/2, y: number = window.innerHeight/2) {
+    constructor(fileName: string, csvContent: string, x: number = window.innerWidth/2, y: number = window.innerHeight/2) {
         this.viewportManager = ViewportManager.getInstance();
+        this.nodeStore = NodeStore.getInstance();
+
+        // Create node in store
+        this.id = this.nodeStore.createNode(
+            NodeType.CSV,
+            { x, y },
+            { width: 110, height: 130 },
+            csvContent
+        );
         
-        this.element = document.createElement('div');
-        this.element.id = 'node-' + uuidv4();
-        this.element.className = 'node csv-node';
-        this.element.style.left = x + 'px';
-        this.element.style.top = y + 'px';
-        this.element.style.width = '90px';
-        this.element.style.height = '110px';
-        this.element.style.position = 'absolute';
-        
+        this.setupElement();
         this.setupContent(fileName);
         this.setupToolbar();
         this.setupDrag();
         this.setupHoverEffects();
         
-        this.unsubscribe = this.viewportManager.subscribe(() => {
-            // We don't need to do anything here since CSS handles the transforms
-            // But we could if we needed to react to viewport changes
+        // Subscribe to viewport changes
+        this.unsubscribeViewport = this.viewportManager.subscribe(() => {});
+
+        // Subscribe to store updates
+        this.unsubscribeStore = this.nodeStore.subscribe(this.id, (_, node) => {
+            if (node.position.x !== parseInt(this.element.style.left) ||
+                node.position.y !== parseInt(this.element.style.top)) {
+                this.element.style.left = `${node.position.x}px`;
+                this.element.style.top = `${node.position.y}px`;
+            }
+
+            if (node.dimensions.width !== parseInt(this.element.style.width) ||
+                node.dimensions.height !== parseInt(this.element.style.height)) {
+                this.element.style.width = `${node.dimensions.width}px`;
+                this.element.style.height = `${node.dimensions.height}px`;
+            }
         });
+    }
+
+    private setupElement() {
+        this.element = document.createElement('div');
+        this.element.id = `node-${this.id}`;
+        this.element.className = 'node csv-node';
+        this.element.style.position = 'absolute';
+        
+        const node = this.nodeStore.getNode(this.id);
+        if (node) {
+            this.element.style.left = `${node.position.x}px`;
+            this.element.style.top = `${node.position.y}px`;
+            this.element.style.width = `${node.dimensions.width}px`;
+            this.element.style.height = `${node.dimensions.height}px`;
+        }
     }
 
     private setupContent(fileName: string) {
@@ -50,7 +83,7 @@ export class CSVNode {
         
         // Prevent default drag behaviors
         icon.addEventListener('dragstart', (e) => {
-            e.preventDefault();
+            e.stopPropagation();
         });
         
         iconContainer.appendChild(icon);
@@ -78,7 +111,7 @@ export class CSVNode {
         
         const tools = [
             { icon: '📋', label: 'Duplicate', action: () => this.duplicate() },
-            { icon: '🗑️', label: 'Delete', action: () => this.element.remove() }
+            { icon: '🗑️', label: 'Delete', action: () => this.destroy() }
         ];
 
         tools.forEach(tool => {
@@ -144,8 +177,11 @@ export class CSVNode {
             currentLeft += dx;
             currentTop += dy;
             
-            this.element.style.left = `${currentLeft}px`;
-            this.element.style.top = `${currentTop}px`;
+            // Update store with new position
+            this.nodeStore.updateNodePosition(this.id, {
+                x: currentLeft,
+                y: currentTop
+            });
             
             startX = e.clientX;
             startY = e.clientY;
@@ -172,16 +208,28 @@ export class CSVNode {
     }
 
     private duplicate() {
+        const node = this.nodeStore.getNode(this.id);
+        if (!node || node.content.type !== NodeType.CSV) return;
+
+        // Convert CSV data back to string format for the new node
+        const csvContent = [
+            node.content.data.headers.join(','),
+            ...node.content.data.rows.map(row => row.join(','))
+        ].join('\n');
+
         const newNode = new CSVNode(
             this.element.querySelector('.node-filename')?.textContent || 'Untitled.csv',
+            csvContent,
             parseInt(this.element.style.left) + 20,
             parseInt(this.element.style.top) + 20
         );
-        document.getElementById('canvas-nodes')?.appendChild(newNode.element);
+        document.getElementById('canvas-nodes')?.appendChild(newNode.getElement());
     }
 
     public destroy() {
-        this.unsubscribe?.();
+        this.nodeStore.deleteNode(this.id);
+        this.unsubscribeViewport?.();
+        this.unsubscribeStore?.();
         this.element.remove();
     }
 
