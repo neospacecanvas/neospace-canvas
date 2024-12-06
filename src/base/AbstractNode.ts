@@ -1,7 +1,7 @@
 import { ViewportManager } from './Viewport';
 import { NodeStore } from './NodeStore';
 import { EdgeManager } from './EdgeManager';
-import { NodeType, NodeContent } from '../types/types';
+import { NodeType, NodeContent, AnchorSide } from '../types/types';
 
 export abstract class AbstractNode {
     protected element: HTMLElement;
@@ -72,17 +72,42 @@ export abstract class AbstractNode {
             const anchor = document.createElement('div');
             anchor.className = `anchor-point anchor-${side}`;
 
+            let isDragging = false;
+
+            // Start drawing on mousedown
             anchor.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
+                isDragging = true;
                 this.edgeManager.startEdge(`node-${this.id}`, side);
                 anchor.classList.add('active');
             });
 
+            // Draw the preview while moving
+            window.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    this.edgeManager.updateTempEdge(e.clientX, e.clientY);
+                }
+            });
+
+            // Handle entering another anchor point
             anchor.addEventListener('mouseenter', () => {
                 if (this.edgeManager.isDrawing) {
                     this.edgeManager.completeEdge(`node-${this.id}`, side);
-                    const activeAnchors = this.element.querySelectorAll('.anchor-point.active');
+                    const activeAnchors = document.querySelectorAll('.anchor-point.active');
                     activeAnchors.forEach(point => point.classList.remove('active'));
+                }
+            });
+
+            // Cancel on mouseup if not over an anchor point
+            window.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    anchor.classList.remove('active');
+                    
+                    // Only cancel if we're not already completing the edge
+                    if (this.edgeManager.isDrawing) {
+                        this.edgeManager.cancelEdge();
+                    }
                 }
             });
 

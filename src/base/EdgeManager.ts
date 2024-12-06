@@ -10,6 +10,7 @@ export class EdgeManager {
     private viewportManager: ViewportManager;
     private _isDrawing: boolean = false;
     private unsubscribeViewport: () => void;
+    private readonly SNAP_DISTANCE = 50;
 
     private constructor() {
         this.viewportManager = ViewportManager.getInstance();
@@ -84,26 +85,6 @@ export class EdgeManager {
         }
     }
 
-    private findNearestSide(target: HTMLElement, mouseX: number, mouseY: number): AnchorSide {
-        const rect = target.getBoundingClientRect();
-        const { scale, panX, panY } = this.viewportManager.getState();
-        
-        const canvasX = (mouseX - panX) / scale;
-        const canvasY = (mouseY - panY) / scale;
-
-        const distToTop = Math.abs(canvasY - rect.top/scale);
-        const distToBottom = Math.abs(canvasY - rect.bottom/scale);
-        const distToLeft = Math.abs(canvasX - rect.left/scale);
-        const distToRight = Math.abs(canvasX - rect.right/scale);
-
-        const min = Math.min(distToTop, distToBottom, distToLeft, distToRight);
-
-        if (min === distToTop) return 'top';
-        if (min === distToBottom) return 'bottom';
-        if (min === distToLeft) return 'left';
-        return 'right';
-    }
-
     public startEdge(nodeId: string, side: AnchorSide) {
         this._isDrawing = true;
         this.currentEdge = {
@@ -128,15 +109,48 @@ export class EdgeManager {
 
         const startPoint = this.getAnchorPoint(this.currentEdge.fromNode!, this.currentEdge.fromSide!);
         
+        // Find target node and closest anchor point
+        const target = document.elementsFromPoint(mouseX, mouseY)
+            .find(el => el.classList.contains('node') && el.id !== this.currentEdge.fromNode) as HTMLElement;
+
         let endPoint = { x, y };
         let toSide: AnchorSide = 'right';
 
-        const target = document.elementsFromPoint(mouseX, mouseY)
-            .find(el => el.classList.contains('node')) as HTMLElement;
+        if (target) {
+            const targetAnchors = target.querySelectorAll('.anchor-point');
+            let closestAnchor: Element | null = null;
+            let closestDistance = this.SNAP_DISTANCE;
 
-        if (target && target.id !== this.currentEdge.fromNode) {
-            toSide = this.findNearestSide(target, mouseX, mouseY);
-            endPoint = this.getAnchorPoint(target.id, toSide);
+            targetAnchors.forEach(anchor => {
+                const rect = anchor.getBoundingClientRect();
+                const anchorX = rect.left + rect.width / 2;
+                const anchorY = rect.top + rect.height / 2;
+                const distance = Math.sqrt(
+                    Math.pow(mouseX - anchorX, 2) + 
+                    Math.pow(mouseY - anchorY, 2)
+                );
+
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestAnchor = anchor;
+                }
+            });
+
+            if (closestAnchor) {
+                const side = Array.from(closestAnchor.classList)
+                    .find(cls => cls.startsWith('anchor-'))
+                    ?.replace('anchor-', '') as AnchorSide;
+                
+                if (side) {
+                    toSide = side;
+                    endPoint = this.getAnchorPoint(target.id, side);
+                    
+                    // Remove highlight from all anchors
+                    targetAnchors.forEach(a => a.classList.remove('highlight'));
+                    // Highlight the closest anchor
+                    closestAnchor.classList.add('highlight');
+                }
+            }
         }
 
         this.drawCurvedPath(this.tempLine, startPoint, endPoint, this.currentEdge.fromSide!, toSide);
@@ -158,7 +172,7 @@ export class EdgeManager {
         };
 
         this.edges.push(edge);
-        this.drawEdges();
+        this.drawEdges(); // Ensure the edge is immediately visible
         this.cancelEdge();
     }
 
@@ -169,6 +183,11 @@ export class EdgeManager {
         }
         this.currentEdge = null;
         this._isDrawing = false;
+
+        // Clear any highlighted anchor points
+        document.querySelectorAll('.anchor-point.highlight').forEach(point => {
+            point.classList.remove('highlight');
+        });
     }
 
     private drawCurvedPath(
