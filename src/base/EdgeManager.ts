@@ -9,6 +9,7 @@ export class EdgeManager {
     private tempLine: SVGPathElement | null = null;
     private viewportManager: ViewportManager;
     private _isDrawing: boolean = false;
+    private selectedEdge: SVGPathElement | null = null;
     private unsubscribeViewport: () => void;
     private readonly SNAP_DISTANCE = 50;
 
@@ -17,6 +18,7 @@ export class EdgeManager {
         this.setupSVGContainer();
         this.setupArrowMarker();
         this.setupViewportSubscription();
+        this.setupCanvasClickHandler();
     }
 
     public static getInstance(): EdgeManager {
@@ -37,52 +39,170 @@ export class EdgeManager {
             }
         }
         this.svgContainer = svg;
+        this.svgContainer.style.pointerEvents = 'none';
     }
 
     private setupArrowMarker() {
         const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
         
+        // Default arrow marker
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
         marker.setAttribute('id', 'arrowhead');
         marker.setAttribute('markerWidth', '10');
         marker.setAttribute('markerHeight', '7');
         marker.setAttribute('refX', '9');
         marker.setAttribute('refY', '3.5');
         marker.setAttribute('orient', 'auto');
-
         const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
         polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
         polygon.setAttribute('fill', '#000');
-
         marker.appendChild(polygon);
+        
+        // Highlighted arrow marker
+        const highlightedMarker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        highlightedMarker.setAttribute('id', 'arrowhead-highlighted');
+        highlightedMarker.setAttribute('markerWidth', '10');
+        highlightedMarker.setAttribute('markerHeight', '7');
+        highlightedMarker.setAttribute('refX', '9');
+        highlightedMarker.setAttribute('refY', '3.5');
+        highlightedMarker.setAttribute('orient', 'auto');
+        const highlightedPolygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        highlightedPolygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+        highlightedPolygon.setAttribute('fill', '#3b82f6');
+        highlightedMarker.appendChild(highlightedPolygon);
+
         defs.appendChild(marker);
+        defs.appendChild(highlightedMarker);
         this.svgContainer.appendChild(defs);
     }
 
     private setupViewportSubscription() {
         this.unsubscribeViewport = this.viewportManager.subscribe(() => {
             this.drawEdges();
+            this.updateToolbarPosition();
         });
     }
 
-    private getAnchorPoint(nodeId: string, side: AnchorSide): {x: number, y: number} {
-        const node = document.getElementById(nodeId);
-        if (!node) return {x: 0, y: 0};
-
-        const { scale } = this.viewportManager.getState();
-        const rect = node.getBoundingClientRect();
+    private setupEdgeInteractions(path: SVGPathElement, edge: Edge) {
+        // Create invisible wider path for hit detection
+        const hitArea = path.cloneNode() as SVGPathElement;
+        hitArea.setAttribute('stroke-width', '45');
+        hitArea.setAttribute('stroke', 'transparent');
+        hitArea.setAttribute('fill', 'none');
+        hitArea.style.pointerEvents = 'stroke'; // Only detect clicks on the stroke
+        hitArea.style.cursor = 'pointer';
+    
+        // Set up the visible path
+        path.style.pointerEvents = 'none';
+        path.style.transition = 'all 0.2s ease';
+    
+        // Add both to the container
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.appendChild(hitArea);
+        group.appendChild(path);
         
-        const x = parseInt(node.style.left, 10);
-        const y = parseInt(node.style.top, 10);
-        const width = rect.width / scale;
-        const height = rect.height / scale;
+        // Handle interactions on the hit area
+        hitArea.addEventListener('mouseenter', () => {
+            if (this.selectedEdge !== path) {
+                path.style.stroke = 'rgba(59, 130, 246, 0.5)';
+                path.style.strokeWidth = '2';
+                path.style.filter = 'drop-shadow(0 0 3px rgba(59, 130, 246, 0.3))';
+                path.setAttribute('marker-end', 'url(#arrowhead-highlighted)');
+            }
+        });
+    
+        hitArea.addEventListener('mouseleave', () => {
+            if (this.selectedEdge !== path) {
+                path.style.stroke = '#000';
+                path.style.strokeWidth = '1';
+                path.style.filter = 'none';
+                path.setAttribute('marker-end', 'url(#arrowhead)');
+            }
+        });
+    
+        hitArea.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectEdge(path, edge);
+        });
+    
+        return group;
+    }
 
-        switch(side) {
-            case 'top':    return {x: x + width/2, y};
-            case 'right':  return {x: x + width, y: y + height/2};
-            case 'bottom': return {x: x + width/2, y: y + height};
-            case 'left':   return {x, y: y + height/2};
+    private selectEdge(path: SVGPathElement, edge: Edge) {
+        if (this.selectedEdge) {
+            this.selectedEdge.style.stroke = '#000';
+            this.selectedEdge.style.strokeWidth = '1';
+            this.selectedEdge.setAttribute('marker-end', 'url(#arrowhead)');
+            this.removeEdgeToolbar();
         }
+
+        this.selectedEdge = path;
+        path.style.stroke = '#3b82f6';
+        path.style.strokeWidth = '2';
+        path.setAttribute('marker-end', 'url(#arrowhead-highlighted)');
+
+        this.showEdgeToolbar(edge);
+    }
+
+    private showEdgeToolbar(edge: Edge) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'edge-toolbar';
+        
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'toolbar-button';
+        deleteButton.innerHTML = '🗑️';
+        deleteButton.onclick = (e) => {
+            e.stopPropagation();
+            this.deleteEdge(edge.id);
+        };
+
+        toolbar.appendChild(deleteButton);
+        this.positionToolbar(toolbar);
+        document.body.appendChild(toolbar);
+    }
+
+    private positionToolbar(toolbar: HTMLElement) {
+        if (this.selectedEdge) {
+            const bbox = this.selectedEdge.getBBox();
+            const { scale, panX, panY } = this.viewportManager.getState();
+            toolbar.style.left = `${(bbox.x + bbox.width/2) * scale + panX - 20}px`;
+            toolbar.style.top = `${(bbox.y + bbox.height/2) * scale + panY - 20}px`;
+        }
+    }
+
+    private updateToolbarPosition() {
+        const toolbar = document.querySelector('.edge-toolbar');
+        if (toolbar) {
+            this.positionToolbar(toolbar as HTMLElement);
+        }
+    }
+
+    private removeEdgeToolbar() {
+        const toolbar = document.querySelector('.edge-toolbar');
+        if (toolbar) {
+            toolbar.remove();
+        }
+        this.selectedEdge = null;
+    }
+
+    private deleteEdge(edgeId: string) {
+        this.edges = this.edges.filter(edge => edge.id !== edgeId);
+        this.removeEdgeToolbar();
+        this.drawEdges();
+    }
+
+    private setupCanvasClickHandler() {
+        document.addEventListener('click', (e) => {
+            const target = e.target as Element;
+            if (!target.closest('path') && !target.closest('.edge-toolbar')) {
+                if (this.selectedEdge) {
+                    this.selectedEdge.style.stroke = '#000';
+                    this.selectedEdge.style.strokeWidth = '1';
+                    this.selectedEdge.setAttribute('marker-end', 'url(#arrowhead)');
+                    this.removeEdgeToolbar();
+                }
+            }
+        });
     }
 
     public startEdge(nodeId: string, side: AnchorSide) {
@@ -109,7 +229,6 @@ export class EdgeManager {
 
         const startPoint = this.getAnchorPoint(this.currentEdge.fromNode!, this.currentEdge.fromSide!);
         
-        // Find target node and closest anchor point
         const target = document.elementsFromPoint(mouseX, mouseY)
             .find(el => el.classList.contains('node') && el.id !== this.currentEdge.fromNode) as HTMLElement;
 
@@ -144,10 +263,7 @@ export class EdgeManager {
                 if (side) {
                     toSide = side;
                     endPoint = this.getAnchorPoint(target.id, side);
-                    
-                    // Remove highlight from all anchors
                     targetAnchors.forEach(a => a.classList.remove('highlight'));
-                    // Highlight the closest anchor
                     closestAnchor.classList.add('highlight');
                 }
             }
@@ -172,7 +288,7 @@ export class EdgeManager {
         };
 
         this.edges.push(edge);
-        this.drawEdges(); // Ensure the edge is immediately visible
+        this.drawEdges();
         this.cancelEdge();
     }
 
@@ -184,10 +300,29 @@ export class EdgeManager {
         this.currentEdge = null;
         this._isDrawing = false;
 
-        // Clear any highlighted anchor points
         document.querySelectorAll('.anchor-point.highlight').forEach(point => {
             point.classList.remove('highlight');
         });
+    }
+
+    private getAnchorPoint(nodeId: string, side: AnchorSide): {x: number, y: number} {
+        const node = document.getElementById(nodeId);
+        if (!node) return {x: 0, y: 0};
+
+        const { scale } = this.viewportManager.getState();
+        const rect = node.getBoundingClientRect();
+        
+        const x = parseInt(node.style.left, 10);
+        const y = parseInt(node.style.top, 10);
+        const width = rect.width / scale;
+        const height = rect.height / scale;
+
+        switch(side) {
+            case 'top':    return {x: x + width/2, y};
+            case 'right':  return {x: x + width, y: y + height/2};
+            case 'bottom': return {x: x + width/2, y: y + height};
+            case 'left':   return {x, y: y + height/2};
+        }
     }
 
     private drawCurvedPath(
@@ -227,20 +362,23 @@ export class EdgeManager {
     }
 
     public drawEdges() {
-        const paths = this.svgContainer.querySelectorAll('path:not([id])');
+        // Clear existing paths
+        const paths = this.svgContainer.querySelectorAll('g');
         paths.forEach(path => path.remove());
-
+    
         this.edges.forEach(edge => {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             const startPoint = this.getAnchorPoint(edge.fromNode, edge.fromSide);
             const endPoint = this.getAnchorPoint(edge.toNode, edge.toSide);
-
+    
             this.drawCurvedPath(path, startPoint, endPoint, edge.fromSide, edge.toSide);
-            path.setAttribute('stroke', 'black');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '1');
             path.setAttribute('fill', 'none');
             path.setAttribute('marker-end', 'url(#arrowhead)');
             
-            this.svgContainer.appendChild(path);
+            const group = this.setupEdgeInteractions(path, edge);
+            this.svgContainer.appendChild(group);
         });
     }
 
@@ -253,5 +391,15 @@ export class EdgeManager {
 
     public get isDrawing(): boolean {
         return this._isDrawing;
+    }
+
+    public destroy() {
+        // Clean up subscriptions and listeners
+        this.unsubscribeViewport?.();
+        this.removeEdgeToolbar();
+        
+        // Clear all edges
+        this.edges = [];
+        this.drawEdges();
     }
 }

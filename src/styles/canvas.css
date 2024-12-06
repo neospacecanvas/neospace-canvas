@@ -122,8 +122,6 @@ canvas {
     max-width: 90px;
 }
 
-/* Add these styles to your existing canvas.css */
-
 .anchor-point {
     position: absolute;
     width: 12px;
@@ -171,4 +169,35 @@ canvas {
     left: -6px;
     top: 50%;
     transform: translateY(-50%);
+}
+
+/* Edge toolbar styling */
+.edge-toolbar {
+    position: absolute;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid #e5e7eb;
+    z-index: 1000;
+}
+
+.edge-toolbar .toolbar-button {
+    padding: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    transition: background-color 0.2s ease;
+}
+
+.edge-toolbar .toolbar-button:hover {
+    background: #f3f4f6;
 }
