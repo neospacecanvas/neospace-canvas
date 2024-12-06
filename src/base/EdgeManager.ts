@@ -9,11 +9,13 @@ export class EdgeManager {
     private tempLine: SVGPathElement | null = null;
     private viewportManager: ViewportManager;
     private _isDrawing: boolean = false;
+    private unsubscribeViewport: () => void;
 
     private constructor() {
         this.viewportManager = ViewportManager.getInstance();
         this.setupSVGContainer();
         this.setupArrowMarker();
+        this.setupViewportSubscription();
     }
 
     public static getInstance(): EdgeManager {
@@ -56,34 +58,39 @@ export class EdgeManager {
         this.svgContainer.appendChild(defs);
     }
 
+    private setupViewportSubscription() {
+        this.unsubscribeViewport = this.viewportManager.subscribe(() => {
+            this.drawEdges();
+        });
+    }
+
     private getAnchorPoint(nodeId: string, side: AnchorSide): {x: number, y: number} {
         const node = document.getElementById(nodeId);
         if (!node) return {x: 0, y: 0};
 
         const { scale } = this.viewportManager.getState();
         const rect = node.getBoundingClientRect();
+        
+        const x = parseInt(node.style.left, 10);
+        const y = parseInt(node.style.top, 10);
         const width = rect.width / scale;
         const height = rect.height / scale;
-        const x = parseInt(node.style.left);
-        const y = parseInt(node.style.top);
 
         switch(side) {
-            case 'top':    return {x: x + width/2, y: y};
+            case 'top':    return {x: x + width/2, y};
             case 'right':  return {x: x + width, y: y + height/2};
             case 'bottom': return {x: x + width/2, y: y + height};
             case 'left':   return {x, y: y + height/2};
         }
     }
 
-    private findNearestSide(target: HTMLElement, x: number, y: number): AnchorSide {
+    private findNearestSide(target: HTMLElement, mouseX: number, mouseY: number): AnchorSide {
         const rect = target.getBoundingClientRect();
         const { scale, panX, panY } = this.viewportManager.getState();
         
-        // Convert screen coordinates to canvas coordinates
-        const canvasX = (x - panX) / scale;
-        const canvasY = (y - panY) / scale;
+        const canvasX = (mouseX - panX) / scale;
+        const canvasY = (mouseY - panY) / scale;
 
-        // Get distances to each side
         const distToTop = Math.abs(canvasY - rect.top/scale);
         const distToBottom = Math.abs(canvasY - rect.bottom/scale);
         const distToLeft = Math.abs(canvasX - rect.left/scale);
@@ -119,54 +126,20 @@ export class EdgeManager {
         const x = (mouseX - panX) / scale;
         const y = (mouseY - panY) / scale;
 
-        // Try to find target node
+        const startPoint = this.getAnchorPoint(this.currentEdge.fromNode!, this.currentEdge.fromSide!);
+        
+        let endPoint = { x, y };
+        let toSide: AnchorSide = 'right';
+
         const target = document.elementsFromPoint(mouseX, mouseY)
             .find(el => el.classList.contains('node')) as HTMLElement;
 
-        let endX = x;
-        let endY = y;
-        let toSide: AnchorSide = 'right';
-
         if (target && target.id !== this.currentEdge.fromNode) {
             toSide = this.findNearestSide(target, mouseX, mouseY);
-            const endPoint = this.getAnchorPoint(target.id, toSide);
-            endX = endPoint.x;
-            endY = endPoint.y;
+            endPoint = this.getAnchorPoint(target.id, toSide);
         }
 
-        const startPoint = this.getAnchorPoint(this.currentEdge.fromNode!, this.currentEdge.fromSide!);
-        
-        // Calculate control points for smooth curve
-        const dx = endX - startPoint.x;
-        const dy = endY - startPoint.y;
-        const midX = startPoint.x + dx * 0.5;
-        const midY = startPoint.y + dy * 0.5;
-
-        let cp1x = startPoint.x;
-        let cp1y = startPoint.y;
-        let cp2x = endX;
-        let cp2y = endY;
-
-        // Adjust control points based on connection sides
-        const tensionX = Math.abs(dx) * 0.5;
-        const tensionY = Math.abs(dy) * 0.5;
-
-        switch(this.currentEdge.fromSide) {
-            case 'right':  cp1x += tensionX; break;
-            case 'left':   cp1x -= tensionX; break;
-            case 'bottom': cp1y += tensionY; break;
-            case 'top':    cp1y -= tensionY; break;
-        }
-
-        switch(toSide) {
-            case 'right':  cp2x += tensionX; break;
-            case 'left':   cp2x -= tensionX; break;
-            case 'bottom': cp2y += tensionY; break;
-            case 'top':    cp2y -= tensionY; break;
-        }
-
-        const path = `M ${startPoint.x} ${startPoint.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
-        this.tempLine.setAttribute('d', path);
+        this.drawCurvedPath(this.tempLine, startPoint, endPoint, this.currentEdge.fromSide!, toSide);
     }
 
     public completeEdge(nodeId: string, side: AnchorSide) {
@@ -198,42 +171,52 @@ export class EdgeManager {
         this._isDrawing = false;
     }
 
+    private drawCurvedPath(
+        path: SVGPathElement, 
+        start: {x: number, y: number}, 
+        end: {x: number, y: number},
+        fromSide: AnchorSide,
+        toSide: AnchorSide
+    ) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+
+        let cp1x = start.x;
+        let cp1y = start.y;
+        let cp2x = end.x;
+        let cp2y = end.y;
+
+        const tensionX = Math.abs(dx) * 0.5;
+        const tensionY = Math.abs(dy) * 0.5;
+
+        switch(fromSide) {
+            case 'right':  cp1x += tensionX; break;
+            case 'left':   cp1x -= tensionX; break;
+            case 'bottom': cp1y += tensionY; break;
+            case 'top':    cp1y -= tensionY; break;
+        }
+
+        switch(toSide) {
+            case 'right':  cp2x += tensionX; break;
+            case 'left':   cp2x -= tensionX; break;
+            case 'bottom': cp2y += tensionY; break;
+            case 'top':    cp2y -= tensionY; break;
+        }
+
+        const d = `M ${start.x} ${start.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${end.x} ${end.y}`;
+        path.setAttribute('d', d);
+    }
+
     public drawEdges() {
-        // Clear existing edges
         const paths = this.svgContainer.querySelectorAll('path:not([id])');
         paths.forEach(path => path.remove());
 
-        // Redraw all edges
         this.edges.forEach(edge => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             const startPoint = this.getAnchorPoint(edge.fromNode, edge.fromSide);
             const endPoint = this.getAnchorPoint(edge.toNode, edge.toSide);
 
-            const dx = endPoint.x - startPoint.x;
-            const dy = endPoint.y - startPoint.y;
-            const tensionX = Math.abs(dx) * 0.5;
-            const tensionY = Math.abs(dy) * 0.5;
-
-            let cp1x = startPoint.x;
-            let cp1y = startPoint.y;
-            let cp2x = endPoint.x;
-            let cp2y = endPoint.y;
-
-            switch(edge.fromSide) {
-                case 'right':  cp1x += tensionX; break;
-                case 'left':   cp1x -= tensionX; break;
-                case 'bottom': cp1y += tensionY; break;
-                case 'top':    cp1y -= tensionY; break;
-            }
-
-            switch(edge.toSide) {
-                case 'right':  cp2x += tensionX; break;
-                case 'left':   cp2x -= tensionX; break;
-                case 'bottom': cp2y += tensionY; break;
-                case 'top':    cp2y -= tensionY; break;
-            }
-
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', `M ${startPoint.x} ${startPoint.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endPoint.x} ${endPoint.y}`);
+            this.drawCurvedPath(path, startPoint, endPoint, edge.fromSide, edge.toSide);
             path.setAttribute('stroke', 'black');
             path.setAttribute('fill', 'none');
             path.setAttribute('marker-end', 'url(#arrowhead)');

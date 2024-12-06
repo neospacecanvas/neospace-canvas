@@ -3,10 +3,12 @@ import { NodeStore } from './NodeStore';
 import { EdgeManager } from './EdgeManager';
 import { NodeType, NodeContent } from '../types/types';
 
-export abstract class Node {
+export abstract class AbstractNode {
     protected element: HTMLElement;
+    protected toolbar: HTMLElement;
     protected isDragging: boolean = false;
     protected isSpacePressed: boolean = false;
+    protected readonly TOOLBAR_OFFSET = -45;
     protected viewportManager: ViewportManager;
     protected nodeStore: NodeStore;
     protected edgeManager: EdgeManager;
@@ -26,7 +28,6 @@ export abstract class Node {
         this.nodeStore = NodeStore.getInstance();
         this.edgeManager = EdgeManager.getInstance();
 
-        // Create node in store
         this.id = this.nodeStore.createNode(
             type,
             { x, y },
@@ -35,12 +36,31 @@ export abstract class Node {
         );
 
         this.setupElement();
+        this.setupToolbar();
         this.setupAnchorPoints();
         this.setupDrag();
+        this.setupHoverEffects();
+        this.setupSpacebarHandling();
         this.setupViewportSubscription();
+        this.setupSelection();
     }
 
-    private setupAnchorPoints() {
+    protected setupElement() {
+        this.element = document.createElement('div');
+        this.element.id = `node-${this.id}`;
+        this.element.className = 'node';
+        this.element.style.position = 'absolute';
+        
+        const node = this.nodeStore.getNode(this.id);
+        if (node) {
+            this.element.style.left = `${node.position.x}px`;
+            this.element.style.top = `${node.position.y}px`;
+            this.element.style.width = `${node.dimensions.width}px`;
+            this.element.style.height = `${node.dimensions.height}px`;
+        }
+    }
+
+    protected setupAnchorPoints() {
         const positions: Array<{ side: 'top' | 'right' | 'bottom' | 'left' }> = [
             { side: 'top' },
             { side: 'right' },
@@ -68,21 +88,6 @@ export abstract class Node {
 
             this.element.appendChild(anchor);
         });
-    }
-
-    protected setupElement() {
-        this.element = document.createElement('div');
-        this.element.id = `node-${this.id}`;
-        this.element.className = 'node';
-        this.element.style.position = 'absolute';
-        
-        const node = this.nodeStore.getNode(this.id);
-        if (node) {
-            this.element.style.left = `${node.position.x}px`;
-            this.element.style.top = `${node.position.y}px`;
-            this.element.style.width = `${node.dimensions.width}px`;
-            this.element.style.height = `${node.dimensions.height}px`;
-        }
     }
 
     protected setupDrag() {
@@ -133,6 +138,72 @@ export abstract class Node {
         });
     }
 
+    protected setupToolbar() {
+        this.toolbar = document.createElement('div');
+        this.toolbar.className = 'node-toolbar';
+        this.toolbar.style.display = 'none';
+        this.toolbar.style.top = `${this.TOOLBAR_OFFSET}px`;
+        
+        const tools = [
+            { icon: '📋', label: 'Duplicate', action: () => this.duplicate() },
+            { icon: '🗑️', label: 'Delete', action: () => this.destroy() }
+        ];
+
+        tools.forEach(tool => {
+            const button = document.createElement('button');
+            button.textContent = tool.icon;
+            button.title = tool.label;
+            button.className = 'toolbar-button';
+            button.onclick = (e) => {
+                e.stopPropagation();
+                tool.action();
+            };
+            this.toolbar.appendChild(button);
+        });
+
+        this.element.appendChild(this.toolbar);
+    }
+
+    protected setupHoverEffects() {
+        this.element.addEventListener('mouseenter', () => {
+            if (!this.isDragging) {
+                document.body.style.cursor = 'grab';
+            }
+        });
+
+        this.element.addEventListener('mouseleave', () => {
+            if (!this.isDragging) {
+                document.body.style.cursor = '';
+            }
+        });
+
+        this.element.addEventListener('mousedown', () => {
+            if (!this.isSpacePressed) {
+                document.body.style.cursor = 'grabbing';
+            }
+        });
+
+        this.element.addEventListener('mouseup', () => {
+            document.body.style.cursor = 'grab';
+        });
+    }
+
+    protected setupSpacebarHandling() {
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat) {
+                this.isSpacePressed = true;
+                document.body.style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                this.isSpacePressed = false;
+                document.body.style.cursor = '';
+            }
+        });
+    }
+
     private setupViewportSubscription() {
         this.unsubscribeViewport = this.viewportManager.subscribe(() => {
             this.edgeManager.drawEdges();
@@ -155,6 +226,8 @@ export abstract class Node {
         });
     }
 
+    protected abstract duplicate(): void;
+
     public destroy() {
         this.edgeManager.removeEdgesForNode(`node-${this.id}`);
         this.nodeStore.deleteNode(this.id);
@@ -165,5 +238,30 @@ export abstract class Node {
 
     public getElement(): HTMLElement {
         return this.element;
+    }
+
+    protected setupSelection() {
+        this.element.addEventListener('click', () => {
+            document.querySelectorAll('.node-toolbar').forEach(toolbar => {
+                if (toolbar !== this.toolbar) {
+                    (toolbar as HTMLElement).style.display = 'none';
+                }
+            });
+            document.querySelectorAll('.node').forEach(node => {
+                if (node !== this.element) {
+                    node.classList.remove('is-selected');
+                }
+            });
+    
+            this.toolbar.style.display = 'flex';
+            this.element.classList.add('is-selected');
+        });
+    
+        document.addEventListener('click', (e) => {
+            if (!this.element.contains(e.target as HTMLElement)) {
+                this.toolbar.style.display = 'none';
+                this.element.classList.remove('is-selected');
+            }
+        });
     }
 }

@@ -35,7 +35,13 @@ canvas {
     width: 100%;
     height: 100%;
     pointer-events: none;
+    transform: translate(var(--pan-x), var(--pan-y)) scale(var(--scale));
+    transform-origin: 0 0;
     z-index: 1;
+}
+
+#canvas-edges path {
+    stroke-width: calc(1px / var(--scale));
 }
 
 #canvas-nodes {
