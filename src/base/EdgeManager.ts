@@ -86,20 +86,20 @@ export class EdgeManager {
     private setupEdgeInteractions(path: SVGPathElement, edge: Edge) {
         // Create invisible wider path for hit detection
         const hitArea = path.cloneNode() as SVGPathElement;
-        hitArea.setAttribute('stroke-width', '45');
-        hitArea.setAttribute('stroke', 'transparent');
+        hitArea.setAttribute('stroke-width', '40'); // Even wider hit area
+        hitArea.setAttribute('stroke', 'rgba(0,0,0,0.001)'); // Nearly transparent but not fully
         hitArea.setAttribute('fill', 'none');
-        hitArea.style.pointerEvents = 'stroke'; // Only detect clicks on the stroke
+        hitArea.style.pointerEvents = 'all'; // Changed from 'stroke' to 'all'
         hitArea.style.cursor = 'pointer';
-    
+        
         // Set up the visible path
         path.style.pointerEvents = 'none';
         path.style.transition = 'all 0.2s ease';
     
-        // Add both to the container
+        // Add both to the container with proper ordering
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.appendChild(hitArea);
-        group.appendChild(path);
+        group.appendChild(hitArea); // Hit area goes first
+        group.appendChild(path);   // Visible path on top
         
         // Handle interactions on the hit area
         hitArea.addEventListener('mouseenter', () => {
