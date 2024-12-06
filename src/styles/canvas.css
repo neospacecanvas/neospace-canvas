@@ -115,3 +115,54 @@ canvas {
     word-break: break-word;
     max-width: 90px;
 }
+
+/* Add these styles to your existing canvas.css */
+
+.anchor-point {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background-color: #fff;
+    border: 2px solid #666;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
+    z-index: 3;
+}
+
+.node:hover .anchor-point {
+    opacity: 0.5;
+}
+
+.anchor-point:hover,
+.anchor-point.active {
+    opacity: 1 !important;
+    background-color: #4299e1;
+    border-color: #3182ce;
+}
+
+/* Position anchor points */
+.anchor-top {
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.anchor-right {
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.anchor-bottom {
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.anchor-left {
+    left: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+}

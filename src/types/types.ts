@@ -1,4 +1,3 @@
-
 export interface Coordinate {
     x: number;
     y: number;
@@ -22,6 +21,17 @@ export interface CSVData {
 export type NodeContent =
     | { type: NodeType.MARKDOWN; data: MarkdownData}
     | {type: NodeType.CSV; data: CSVData};
+
+export type AnchorSide = 'top' | 'right' | 'bottom' | 'left';
+
+export interface Edge {
+    id: string;
+    fromNode: string;
+    toNode: string;
+    fromSide: AnchorSide;
+    toSide: AnchorSide;
+    toEnd: 'arrow' | 'none';
+}
 
 export interface SerializedNode {
     id: string;
