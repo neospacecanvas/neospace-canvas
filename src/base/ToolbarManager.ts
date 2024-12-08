@@ -1,17 +1,16 @@
-import { MarkdownNode } from "./MarkdownNode";
-import { CSVNode } from "./CSVNode";
 
-// ToolbarManager.ts
+import { CanvasManager } from './CanvasManager';
+
 export class ToolbarManager {
     private container: HTMLElement;
-    private onNodeCreate?: (type: string, data: any) => void;
+    private canvasManager: CanvasManager;
 
-    constructor(containerId: string, onNodeCreate?: (type: string, data: any) => void) {
+    constructor(containerId: string, canvasManager: CanvasManager) {
         const container = document.getElementById(containerId);
         if (!container) throw new Error('Toolbar container not found');
         
         this.container = container;
-        this.onNodeCreate = onNodeCreate;
+        this.canvasManager = canvasManager;
         this.setupToolbar();
     }
 
@@ -23,11 +22,13 @@ export class ToolbarManager {
             { id: 'hand', icon: '✋', title: 'Pan Mode' },
             { id: 'select', icon: '⬚', title: 'Select Mode' },
             { id: 'markdown', icon: '📝', title: 'Add Markdown', action: () => this.handleMarkdownCreate() },
-            { id: 'upload', icon: '↑', title: 'Upload File', action: () => this.handleCSVUpload() }
+            { id: 'upload', icon: '↑', title: 'Upload CSV', action: () => this.handleCSVUpload() },
+            { id: 'save', icon: '💾', title: 'Save Canvas', action: () => this.handleSave() },
+            { id: 'load', icon: '📂', title: 'Load Canvas', action: () => this.handleLoad() }
         ];
     
         tools.forEach((tool, index) => {
-            if (index === 2) {
+            if (index === 2 || index === 4) {
                 const divider = document.createElement('div');
                 divider.className = 'toolbar-divider';
                 toolbar.appendChild(divider);
@@ -39,7 +40,9 @@ export class ToolbarManager {
             button.setAttribute('data-tool', tool.id);
             button.textContent = tool.icon;
     
-            button.addEventListener('click', tool.action || (() => console.log('Clicked:', tool.id)));
+            if (tool.action) {
+                button.addEventListener('click', tool.action);
+            }
             toolbar.appendChild(button);
         });
     
@@ -56,23 +59,11 @@ export class ToolbarManager {
             if (!file) return;
             
             try {
-                // First, read the file content
                 const content = await file.text();
-                
-                // Create the node data
-                const nodeData = {
+                this.canvasManager.createCSVNode({
                     fileName: file.name,
                     content: content
-                };
-
-                // Notify parent through callback
-                if (this.onNodeCreate) {
-                    this.onNodeCreate('csv', nodeData);
-                } else {
-                    // Fallback to direct creation if no callback provided
-                    const node = new CSVNode(file.name);
-                    document.getElementById('canvas-nodes')?.appendChild(node.getElement());
-                }
+                });
             } catch (error) {
                 console.error('Error handling CSV upload:', error);
             }
@@ -82,12 +73,45 @@ export class ToolbarManager {
     }
 
     private handleMarkdownCreate(): void {
-        if (this.onNodeCreate) {
-            this.onNodeCreate('markdown', { content: '' });
-        } else {
-            // Fallback to direct creation
-            const node = new MarkdownNode();
-            document.getElementById('canvas-nodes')?.appendChild(node.getElement());
-        }
+        this.canvasManager.createMarkdownNode();
+    }
+
+    private async handleSave(): Promise<void> {
+        const state = this.canvasManager.saveState();
+        const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `canvas-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    private handleLoad(): void {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+
+        input.onchange = async (e: Event) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+
+            try {
+                const content = await file.text();
+                const state = JSON.parse(content);
+                this.canvasManager.loadState(state);
+            } catch (error) {
+                console.error('Error loading canvas state:', error);
+            }
+        };
+
+        input.click();
+    }
+
+    public destroy(): void {
+        this.container.innerHTML = '';
     }
 }

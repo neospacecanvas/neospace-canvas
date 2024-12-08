@@ -28,12 +28,13 @@ export abstract class AbstractNode {
         this.nodeStore = NodeStore.getInstance();
         this.edgeManager = EdgeManager.getInstance();
 
-        this.id = this.nodeStore.createNode(
-            type,
-            { x, y },
-            { width, height },
-            initialContent
-        );
+        this.id = this.nodeStore.createNode(type, {
+            position: { x, y },
+            dimensions: { width, height },
+            content: type === NodeType.CSV 
+                ? { type: NodeType.CSV, data: { fileName: initialContent, headers: [], rows: [] } }
+                : { type: NodeType.MARKDOWN, data: { content: initialContent } }
+        });
 
         this.setupElement();
         this.setupToolbar();
@@ -61,7 +62,7 @@ export abstract class AbstractNode {
     }
 
     protected setupAnchorPoints() {
-        const positions: Array<{ side: 'top' | 'right' | 'bottom' | 'left' }> = [
+        const positions: Array<{ side: AnchorSide }> = [
             { side: 'top' },
             { side: 'right' },
             { side: 'bottom' },
@@ -74,37 +75,32 @@ export abstract class AbstractNode {
 
             let isDragging = false;
 
-            // Start drawing on mousedown
             anchor.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 isDragging = true;
-                this.edgeManager.startEdge(`node-${this.id}`, side);
+                this.edgeManager.startEdge(this.getId(), side);
                 anchor.classList.add('active');
             });
 
-            // Draw the preview while moving
             window.addEventListener('mousemove', (e) => {
                 if (isDragging) {
                     this.edgeManager.updateTempEdge(e.clientX, e.clientY);
                 }
             });
 
-            // Handle entering another anchor point
             anchor.addEventListener('mouseenter', () => {
                 if (this.edgeManager.isDrawing) {
-                    this.edgeManager.completeEdge(`node-${this.id}`, side);
+                    this.edgeManager.completeEdge(this.getId(), side);
                     const activeAnchors = document.querySelectorAll('.anchor-point.active');
                     activeAnchors.forEach(point => point.classList.remove('active'));
                 }
             });
 
-            // Cancel on mouseup if not over an anchor point
             window.addEventListener('mouseup', () => {
                 if (isDragging) {
                     isDragging = false;
                     anchor.classList.remove('active');
                     
-                    // Only cancel if we're not already completing the edge
                     if (this.edgeManager.isDrawing) {
                         this.edgeManager.cancelEdge();
                     }
@@ -254,11 +250,15 @@ export abstract class AbstractNode {
     protected abstract duplicate(): void;
 
     public destroy() {
-        this.edgeManager.removeEdgesForNode(`node-${this.id}`);
+        this.edgeManager.removeEdgesForNode(this.getId());
         this.nodeStore.deleteNode(this.id);
         this.unsubscribeViewport?.();
         this.unsubscribeStore?.();
         this.element.remove();
+    }
+
+    public getId(): string {
+        return `node-${this.id}`;
     }
 
     public getElement(): HTMLElement {

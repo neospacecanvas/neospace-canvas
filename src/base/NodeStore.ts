@@ -1,6 +1,5 @@
-import { CSVData, NodeType, NodeContent, Coordinate, Dimensions, SerializedNode } from '../types/types';
+import { NodeType, NodeContent, Coordinate, Dimensions, SerializedNode, NodeCreateOptions } from '../types/types';
 
-// Represents a node in our store
 export interface Node {
     id: string;
     position: Coordinate;
@@ -9,7 +8,6 @@ export interface Node {
     version: number;
 }
 
-type NodeUpdateCallback = (node: Node) => void;
 type NodeListener = (nodeId: string, node: Node) => void;
 
 export class NodeStore {
@@ -57,31 +55,19 @@ export class NodeStore {
 
     public createNode(
         type: NodeType,
-        position: Coordinate,
-        dimensions: Dimensions,
-        initialContent: string
+        options: NodeCreateOptions = {}
     ): string {
-        const id = crypto.randomUUID();
+        const id = options.id || crypto.randomUUID();
+        const position = options.position || { x: 0, y: 0 };
+        const dimensions = options.dimensions || { width: 200, height: 150 };
 
         let content: NodeContent;
-        if (type === NodeType.CSV) {
-            const lines = initialContent.trim().split('\n').map(line => 
-                line.split(',').map(cell => cell.trim())
-            );
-            content = {
-                type: NodeType.CSV,
-                data: {
-                    headers: lines[0] || [],
-                    rows: lines.slice(1) || []
-                }
-            };
+        if (options.content) {
+            content = options.content;
         } else {
-            content = {
-                type: NodeType.MARKDOWN,
-                data: {
-                    content: initialContent
-                }
-            };
+            content = type === NodeType.CSV 
+                ? { type: NodeType.CSV, data: { fileName: '', headers: [], rows: [] } }
+                : { type: NodeType.MARKDOWN, data: { content: '' } };
         }
 
         const node: Node = {
@@ -141,7 +127,12 @@ export class NodeStore {
         return Array.from(this.nodes.values());
     }
 
-    // Utility method to serialize all nodes
+    public clear(): void {
+        this.nodes.clear();
+        this.listeners.clear();
+        this.version = 1;
+    }
+
     public serialize(): SerializedNode[] {
         return this.getAllNodes().map(node => ({
             id: node.id,
@@ -150,5 +141,15 @@ export class NodeStore {
             content: node.content,
             version: node.version
         }));
+    }
+
+    public deserialize(nodes: SerializedNode[]): void {
+        this.clear();
+        nodes.forEach(node => {
+            this.nodes.set(node.id, {
+                ...node,
+                version: this.version++
+            });
+        });
     }
 }

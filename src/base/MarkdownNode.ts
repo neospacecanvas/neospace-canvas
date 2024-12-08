@@ -6,7 +6,7 @@ export class MarkdownNode extends AbstractNode {
     private preview: HTMLDivElement | null = null;
 
     constructor(x?: number, y?: number) {
-        super(NodeType.MARKDOWN, 'Type markdown here...', x, y, 480, 320);
+        super(NodeType.MARKDOWN, '', x, y, 480, 320);
         this.element.classList.add('markdown-node');
         this.setupHeader();
         this.setupContent();
@@ -78,8 +78,6 @@ export class MarkdownNode extends AbstractNode {
             }
         });
 
-        this.editor.innerText = 'Type markdown here...';
-
         content.appendChild(this.editor);
         content.appendChild(this.preview);
         this.element.appendChild(content);
@@ -102,42 +100,32 @@ export class MarkdownNode extends AbstractNode {
             .replace(/\n/g, '<br>');
     }
 
-    public insertMarkdown(prefix: string, suffix: string = '') {
-        if (this.editor!.style.display === 'none') {
-            this.editor!.style.display = 'block';
-            this.preview!.style.display = 'none';
-            this.editor!.focus();
-        }
-
-        const selection = window.getSelection();
-        const range = selection?.getRangeAt(0);
-
-        if (range) {
-            const text = prefix + range.toString() + suffix;
-            document.execCommand('insertText', false, text);
+    public setContent(content: string): void {
+        if (this.editor && this.preview) {
+            this.editor.innerText = content;
+            this.preview.innerHTML = this.parseMarkdown(content);
+            this.preview.classList.remove('placeholder');
 
             this.nodeStore.updateNodeContent(this.id, {
                 type: NodeType.MARKDOWN,
-                data: { content: this.editor!.innerText }
+                data: { content }
             });
-
-            this.preview!.innerHTML = this.parseMarkdown(this.editor!.innerText);
         }
     }
 
-    protected duplicate(): void {
-        const node = this.nodeStore.getNode(this.id);
-        if (!node || node.content.type !== NodeType.MARKDOWN) return;
+    public getContent(): string {
+        return this.editor?.innerText || '';
+    }
 
+    protected duplicate(): void {
         const newNode = new MarkdownNode(
             parseInt(this.element.style.left) + 20,
             parseInt(this.element.style.top) + 20
         );
 
-        newNode.editor!.innerText = this.editor!.innerText;
-        newNode.preview!.innerHTML = this.parseMarkdown(newNode.editor!.innerText);
-        if (newNode.editor!.innerText !== 'Type markdown here...') {
-            newNode.preview!.classList.remove('placeholder');
+        const content = this.getContent();
+        if (content !== 'Type markdown here...') {
+            newNode.setContent(content);
         }
 
         document.getElementById('canvas-nodes')?.appendChild(newNode.getElement());

@@ -13,16 +13,17 @@ export interface MarkdownData {
 }
 
 export interface CSVData {
+    fileName: string;
     headers: string[];
     rows: string[][];
 }
 
-// Union type for all node types
 export type NodeContent =
-    | { type: NodeType.MARKDOWN; data: MarkdownData}
-    | {type: NodeType.CSV; data: CSVData};
+    | { type: NodeType.MARKDOWN; data: MarkdownData }
+    | { type: NodeType.CSV; data: CSVData };
 
 export type AnchorSide = 'top' | 'right' | 'bottom' | 'left';
+export type ArrowEnd = 'arrow' | 'none';
 
 export interface Edge {
     id: string;
@@ -30,7 +31,7 @@ export interface Edge {
     toNode: string;
     fromSide: AnchorSide;
     toSide: AnchorSide;
-    toEnd: 'arrow' | 'none';
+    toEnd: ArrowEnd;
 }
 
 export interface SerializedNode {
@@ -41,7 +42,28 @@ export interface SerializedNode {
     version: number;
 }
 
+export interface ViewportState {
+    scale: number;
+    panX: number;
+    panY: number;
+}
+
+export interface CanvasState {
+    version: string;
+    timestamp: string;
+    viewport: ViewportState;
+    nodes: SerializedNode[];
+    edges: Edge[];
+}
+
 export enum NodeType {
     MARKDOWN = 'markdown',
     CSV = 'csv'
+}
+
+export interface NodeCreateOptions {
+    id?: string;
+    position?: Coordinate;
+    dimensions?: Dimensions;
+    content?: NodeContent;
 }
