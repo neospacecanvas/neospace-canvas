@@ -2,21 +2,48 @@ import { AbstractNode } from './AbstractNode';
 import { NodeType } from '../types/types';
 
 export class CSVNode extends AbstractNode {
+    private fileName: string;
+    private iconContainer: HTMLDivElement;
+    private fileNameElement: HTMLDivElement;
+
     constructor(fileName: string, csvContent: string, x?: number, y?: number) {
-        super(NodeType.CSV, csvContent, x, y, 110, 130);
+        // Create the CSV content object with initial data
+        const lines = csvContent.trim().split('\n');
+        const headers = lines[0].split(',').map(header => header.trim());
+        const rows = lines.slice(1).map(line => 
+            line.split(',').map(cell => cell.trim())
+        );
+
+        // Initialize with CSV content
+        super(NodeType.CSV, '', x, y, 110, 130);
+        
+        // Store file name
+        this.fileName = fileName;
+
+        // Update node store with complete CSV data
+        this.nodeStore.updateNodeContent(this.id, {
+            type: NodeType.CSV,
+            data: {
+                fileName: this.fileName,
+                headers,
+                rows
+            }
+        });
+
         this.element.classList.add('csv-node');
-        this.setupContent(fileName);
+        this.setupContent();
     }
 
-    private setupContent(fileName: string) {
+    private setupContent() {
         const content = document.createElement('div');
         content.className = 'node-content';
         
-        const iconContainer = document.createElement('div');
-        iconContainer.className = 'node-icon';
+        // Create icon container
+        this.iconContainer = document.createElement('div');
+        this.iconContainer.className = 'node-icon';
         
         const icon = document.createElement('img');
-        icon.src = '../../public/assets/csv.png';
+        icon.src = '/assets/csv.png';  // Make sure this path is correct
         icon.className = 'csv-icon';
         icon.alt = 'CSV file';
         icon.draggable = false;
@@ -25,14 +52,15 @@ export class CSVNode extends AbstractNode {
             e.stopPropagation();
         });
         
-        iconContainer.appendChild(icon);
+        this.iconContainer.appendChild(icon);
         
-        const fileNameElement = document.createElement('div');
-        fileNameElement.className = 'node-filename';
-        fileNameElement.textContent = fileName;
+        // Create filename element
+        this.fileNameElement = document.createElement('div');
+        this.fileNameElement.className = 'node-filename';
+        this.fileNameElement.textContent = this.fileName;
         
-        content.appendChild(iconContainer);
-        content.appendChild(fileNameElement);
+        content.appendChild(this.iconContainer);
+        content.appendChild(this.fileNameElement);
         this.element.appendChild(content);
         
         content.addEventListener('dragstart', (e) => {
@@ -44,17 +72,41 @@ export class CSVNode extends AbstractNode {
         const node = this.nodeStore.getNode(this.id);
         if (!node || node.content.type !== NodeType.CSV) return;
 
+        const csvData = node.content.data;
         const csvContent = [
-            node.content.data.headers.join(','),
-            ...node.content.data.rows.map(row => row.join(','))
+            csvData.headers.join(','),
+            ...csvData.rows.map(row => row.join(','))
         ].join('\n');
 
         const newNode = new CSVNode(
-            this.element.querySelector('.node-filename')?.textContent || 'Untitled.csv',
+            this.fileName,
             csvContent,
             parseInt(this.element.style.left) + 20,
             parseInt(this.element.style.top) + 20
         );
         document.getElementById('canvas-nodes')?.appendChild(newNode.getElement());
+    }
+
+    public getFileName(): string {
+        return this.fileName;
+    }
+
+    public setFileName(fileName: string): void {
+        this.fileName = fileName;
+        if (this.fileNameElement) {
+            this.fileNameElement.textContent = fileName;
+        }
+        
+        // Update the node store
+        const node = this.nodeStore.getNode(this.id);
+        if (node && node.content.type === NodeType.CSV) {
+            this.nodeStore.updateNodeContent(this.id, {
+                type: NodeType.CSV,
+                data: {
+                    ...node.content.data,
+                    fileName: fileName
+                }
+            });
+        }
     }
 }

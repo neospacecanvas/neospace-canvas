@@ -185,42 +185,58 @@ export class CanvasManager {
         };
     }
 
-    public loadState(state: CanvasState): void {
-        // Clear current state
-        this.clear();
+    // In the loadState method of CanvasManager.ts:
+public loadState(state: CanvasState): void {
+    // Clear current state
+    this.clear();
 
-        // Restore viewport
-        this.viewportManager.updateState(state.viewport);
+    // Restore viewport
+    this.viewportManager.updateState(state.viewport);
 
-        // Restore nodes
-        state.nodes.forEach(nodeData => {
-            if (nodeData.content.type === NodeType.MARKDOWN) {
-                const node = new MarkdownNode(
-                    nodeData.position.x,
-                    nodeData.position.y
-                );
-                node.setContent(nodeData.content.data.content);
-                this.nodesContainer.appendChild(node.getElement());
-            } else if (nodeData.content.type === NodeType.CSV) {
-                const csvData = nodeData.content.data;
-                const csvContent = [
-                    csvData.headers.join(','),
-                    ...csvData.rows.map(row => row.join(','))
-                ].join('\n');
-                
-                const node = new CSVNode(
-                    csvData.fileName,
-                    csvContent,
-                    nodeData.position.x,
-                    nodeData.position.y
-                );
-                this.nodesContainer.appendChild(node.getElement());
-            }
-        });
+    // Keep track of original node IDs for edge creation
+    const nodeIdMap = new Map<string, string>();
 
-        // Restore edges
-        this.edgeManager.deserialize(state.edges);
-    }
+    // Restore nodes
+    state.nodes.forEach(nodeData => {
+        let nodeElement;
+        if (nodeData.content.type === NodeType.MARKDOWN) {
+            const node = new MarkdownNode(
+                nodeData.position.x,
+                nodeData.position.y
+            );
+            node.setContent(nodeData.content.data.content);
+            nodeElement = node.getElement();
+            nodeIdMap.set(nodeData.id, node.getId());
+        } else if (nodeData.content.type === NodeType.CSV) {
+            const csvData = nodeData.content.data;
+            const csvContent = [
+                csvData.headers.join(','),
+                ...csvData.rows.map(row => row.join(','))
+            ].join('\n');
+            
+            const node = new CSVNode(
+                csvData.fileName,
+                csvContent,
+                nodeData.position.x,
+                nodeData.position.y
+            );
+            nodeElement = node.getElement();
+            nodeIdMap.set(nodeData.id, node.getId());
+        }
+        if (nodeElement) {
+            this.nodesContainer.appendChild(nodeElement);
+        }
+    });
+
+    // Restore edges with mapped IDs
+    const mappedEdges = state.edges.map(edge => ({
+        ...edge,
+        fromNode: nodeIdMap.get(edge.fromNode) || edge.fromNode,
+        toNode: nodeIdMap.get(edge.toNode) || edge.toNode,
+    }));
+
+    this.edgeManager.deserialize(mappedEdges);
+}
 
     public clear(): void {
         // Clear nodes
