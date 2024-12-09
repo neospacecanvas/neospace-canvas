@@ -137,6 +137,7 @@ coverage
 
 # Rust build artifacts
 /target
+**/target/
 **/*.rs.bk
 Cargo.lock
 
