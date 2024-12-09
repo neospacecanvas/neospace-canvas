@@ -25,6 +25,8 @@
   },
   "dependencies": {
     "marked": "^15.0.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "vite-plugin-top-level-await": "^1.4.4",
+    "vite-plugin-wasm": "^3.3.0"
   }
 }
