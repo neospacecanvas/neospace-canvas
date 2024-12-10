@@ -1,0 +1,5 @@
+[workspace]
+members = ["tabular_analysis"]
+
+[profile.release]
+opt-level = "s"

@@ -1,14 +1,34 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use wasm_bindgen::prelude::*;
+use std::collections::HashMap;
+
+/// the csv file will be passed in as a string
+/// it is critical to use regular expressions to detect the most likely datatype
+/// we need to read a column, decide what datatype it fits into, and what types it doesn't
+/// we also need to decide if there is likely some type of error
+
+pub enum ColumnDatatypes {
+    INTEGER,
+    DECIMAL,
+    CURRENCY,
+    PERCENTAGE,
+    DATE,
+    DATETIME,
+    TIME,
+    CATEGORICAL,
+    TEXT,
+    EMAIL,
+    PHONE
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// this struct is for keeping track of stats
+/// on a column's metadata as its read
+struct ColumnStats {
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+}
+/// the CSV data representation
+#[wasm_bindgen]
+pub struct TabularDataAnalyzer {
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>,
+    column_stats: HashMap<String, ColumnStats>
 }
