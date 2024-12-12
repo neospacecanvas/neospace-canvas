@@ -4,7 +4,16 @@ use csv::Reader;
 // Core logic in pure Rust - no WASM dependencies
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use web_sys::console;
+
 pub fn process_csv_internal(csv_data: String) -> Result<String, String> {
+    // Log input in both environments
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("Input CSV data: {}", csv_data);
+    #[cfg(target_arch = "wasm32")]
+    console::log_1(&format!("Input CSV data: {}", csv_data).into());
+
     let cursor = Cursor::new(csv_data);
     let mut reader = Reader::from_reader(cursor);
     let mut output = String::new();
@@ -15,22 +24,45 @@ pub fn process_csv_internal(csv_data: String) -> Result<String, String> {
             Ok(record) => {
                 row_num += 1;
                 output.push_str(&format!("\nRow {}: {:?}", row_num, record));
-                for (column_index, field) in record.iter().enumerate() {
-                    output.push_str(&format!("  Column {}: {}\n", column_index + 1, field));
-                }
-                output.push_str("------------------\n");
+                // Log each row processing
+                #[cfg(target_arch = "wasm32")]
+                console::log_1(&format!("Processing row {}: {:?}", row_num, record).into());
             }
-            Err(e) => return Err(format!("error reading row: {}", e)),
+            Err(e) => {
+                let error_msg = format!("error reading row: {}", e);
+                #[cfg(target_arch = "wasm32")]
+                console::log_1(&format!("Error: {}", error_msg).into());
+                return Err(error_msg);
+            }
         }
     }
+
+    // Log output in both environments
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("Output: {}", output);
+    #[cfg(target_arch = "wasm32")]
+    console::log_1(&format!("Output: {}", output).into());
+
     Ok(output)
 }
 
-// WASM wrapper
 #[wasm_bindgen]
 pub fn read_csv(csv_data: String) -> Result<String, JsValue> {
-    process_csv_internal(csv_data).map_err(|e| JsValue::from_str(&e))
+    #[cfg(target_arch = "wasm32")]
+    console::log_1(&"Starting CSV processing".into());
+    
+    let result = process_csv_internal(csv_data).map_err(|e| JsValue::from_str(&e));
+    
+    #[cfg(target_arch = "wasm32")]
+    console::log_1(&format!("CSV processing result: {:?}", result).into());
+    
+    result
 }
+
+/// ==================
+/// Tests:
+/// =================
+
 
 /// seperate pure rust tests from the webassembly tests
 #[cfg(test)]
