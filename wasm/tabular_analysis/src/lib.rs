@@ -7,6 +7,8 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::console;
 
+mod types;
+
 pub fn process_csv_internal(csv_data: String) -> Result<String, String> {
     // Log input in both environments
     #[cfg(not(target_arch = "wasm32"))]
