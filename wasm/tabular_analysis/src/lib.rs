@@ -1,57 +1,65 @@
-use serde::{Deserialize, Serialize};
+use std::io::Cursor;
+
+use csv::Reader;
+// Core logic in pure Rust - no WASM dependencies
 use wasm_bindgen::prelude::*;
-use std::collections::HashMap;
 
-/// the csv file will be passed in as a string
-/// it is critical to use regular expressions to detect the most likely datatype
-/// we need to read a column, decide what datatype it fits into, and what types it doesn't
-/// we also need to decide if there is likely some type of error
-#[derive(Debug, Serialize, Deserialize)]    
-pub enum ColumnDatatypes {
-    INTEGER,
-    DECIMAL {precision: u8, scale: u8},
-    CURRENCY,
-    PERCENTAGE,
-    DATE,
-    DATETIME,
-    TIME,
-    CATEGORICAL,
-    TEXT { max_length: usize},
-    EMAIL,
-    PHONE
+pub fn process_csv_internal(csv_data: String) -> Result<String, String> {
+    let cursor = Cursor::new(csv_data);
+    let mut reader = Reader::from_reader(cursor);
+    let mut output = String::new();
+    let mut row_num = 0;
+
+    for result in reader.records() {
+        match result {
+            Ok(record) => {
+                row_num += 1;
+                output.push_str(&format!("\nRow {}: {:?}", row_num, record));
+                for (column_index, field) in record.iter().enumerate() {
+                    output.push_str(&format!("  Column {}: {}\n", column_index + 1, field));
+                }
+                output.push_str("------------------\n");
+            }
+            Err(e) => return Err(format!("error reading row: {}", e)),
+        }
+    }
+    Ok(output)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NumericStats { 
-    min: f64,
-    max: f64,
-    mean: f64,
-    median: f64,
-    std_dev: f64,
-    quartiles: [f64; 3],
-    distinct_count: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TextStats {
-    min_length: usize,
-    max_length: usize,
-    avg_length: f64,
-    distict_count: usize,
-    most_common: Vec<(String, usize)>,
-}
-
-
-
-/// this struct is for keeping track of stats
-/// on a column's metadata as its read
-struct ColumnStats {
-
-}
-/// the CSV data representation
+// WASM wrapper
 #[wasm_bindgen]
-pub struct TabularDataAnalyzer {
-    headers: Vec<String>,
-    rows: Vec<Vec<String>>,
-    column_stats: HashMap<String, ColumnStats>
+pub fn read_csv(csv_data: String) -> Result<String, JsValue> {
+    process_csv_internal(csv_data).map_err(|e| JsValue::from_str(&e))
+}
+
+/// seperate pure rust tests from the webassembly tests
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    const TEST_CSV: &str = "name,age\nJohn,30\nJane,25";
+
+    // Pure Rust tests in tests/rust_tests.rs
+    #[test]
+    fn test_csv_processing() {
+        let result = process_csv_internal(TEST_CSV.to_string()).unwrap();
+        println!("output: {}", result);
+        assert!(result.contains("John"));
+    }
+}
+
+#[cfg(test)]
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    const TEST_CSV: &str = "name,age\nJohn,30\nJane,25";
+
+    #[wasm_bindgen_test]
+    fn test_wasm_csv() {
+        let result = read_csv(TEST_CSV.to_string()).unwrap();
+        assert!(result.contains("John"));
+    }
 }
