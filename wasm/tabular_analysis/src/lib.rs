@@ -52,12 +52,12 @@ pub fn process_csv_internal(csv_data: String) -> Result<String, String> {
 pub fn read_csv(csv_data: String) -> Result<String, JsValue> {
     #[cfg(target_arch = "wasm32")]
     console::log_1(&"Starting CSV processing".into());
-    
+
     let result = process_csv_internal(csv_data).map_err(|e| JsValue::from_str(&e));
-    
+
     #[cfg(target_arch = "wasm32")]
     console::log_1(&format!("CSV processing result: {:?}", result).into());
-    
+
     result
 }
 
@@ -65,10 +65,11 @@ pub fn read_csv(csv_data: String) -> Result<String, JsValue> {
 /// Tests:
 /// =================
 
-
 /// seperate pure rust tests from the webassembly tests
 #[cfg(test)]
 mod tests {
+
+    use types::CSV;
 
     use super::*;
 
@@ -80,6 +81,14 @@ mod tests {
         let result = process_csv_internal(TEST_CSV.to_string()).unwrap();
         println!("output: {}", result);
         assert!(result.contains("John"));
+    }
+
+    #[test]
+    fn test_csv_from_string() {
+        // unwrap gives the actual CSV not Option
+        let csv = CSV::from_string(TEST_CSV.to_string()).unwrap();
+        assert_eq!(csv.row_count(), 2);
+        assert_eq!(csv.column_count(), 2);
     }
 }
 
