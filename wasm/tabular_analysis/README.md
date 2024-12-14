@@ -20,3 +20,7 @@ or test base rust code with cargo
 ```bash
 cargo test
 ```
+running with debug logging
+```bash
+cargo test -- --nocapture
+```
