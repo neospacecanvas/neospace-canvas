@@ -24,3 +24,11 @@ running with debug logging
 ```bash
 cargo test -- --nocapture
 ```
+testing with warnings turned off (this flag does force recompile)
+```bash
+RUSTFLAGS=-Awarnings cargo test
+```
+testing with warnings turned off and debug logging (the best way)
+```bash
+RUSTFLAGS=-Awarnings cargo test
+```
