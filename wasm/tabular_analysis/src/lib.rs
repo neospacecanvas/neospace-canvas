@@ -1,7 +1,4 @@
 // crate level declarations
-//TODO: remove this when this become production 
-#![allow(warnings)]
-
 
 use std::io::Cursor;
 
