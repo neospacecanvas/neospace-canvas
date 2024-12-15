@@ -72,6 +72,7 @@ pub struct CSV {
     headers: Arc<Vec<String>>,
     pub row_count: usize,
     pub column_count: usize,
+    thread_count: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -117,7 +118,13 @@ impl CSV {
             headers: Arc::new(headers),
             row_count,
             column_count,
+            thread_count: None,
         })
+    }
+
+    pub fn with_thread_count(mut self, threads: usize) -> Self {
+        self.thread_count = Some(threads);
+        self
     }
 
     pub fn row_count(&self) -> usize {
