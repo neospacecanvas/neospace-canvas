@@ -565,7 +565,6 @@ impl CSV {
 
         let min_length = *lengths.iter().min().unwrap();
         let max_length = *lengths.iter().max().unwrap();
-
         // Calculate average length
         let avg_length = lengths.iter().sum::<usize>() as f64 / lengths.len() as f64;
 
