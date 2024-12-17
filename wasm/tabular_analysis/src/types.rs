@@ -172,6 +172,121 @@ impl CSV {
         })
     }
 
+    // WASM-specific async implementation
+    #[cfg(target_arch = "wasm32")]
+    pub async fn analyze_with_workers(&self) -> Result<JsValue, JsValue> {
+        use futures::channel::mpsc::{channel, Sender};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use wasm_bindgen::JsCast;
+        use web_sys::{MessageEvent, Worker};
+
+        let available_threads = web_sys::window()
+            .unwrap()
+            .navigator()
+            .hardware_concurrency() as usize;
+
+        let num_workers = match self.thread_count {
+            Some(count) => count,
+            None => (available_threads.saturating_sub(1)).max(1),
+        };
+
+        let (sender, mut receiver) = channel::<WorkerResponse>(self.column_count);
+        let mut workers: Vec<Worker> = Vec::with_capacity(num_workers);
+
+        for _ in 0..num_workers {
+            let worker = Worker::new("./worker.js")
+                .map_err(|e| JsValue::from_str(&format!("Failed to create worker: {:?}", e)))?;
+            workers.push(worker);
+        }
+
+        let completed_count = Rc::new(RefCell::new(0));
+        let total_columns = self.column_count;
+
+        let chunks = self.distribute_work(num_workers);
+
+        for (worker_idx, chunk) in chunks.iter().enumerate() {
+            let worker = &workers[worker_idx];
+            let sender = sender.clone();
+            let completed_count = Rc::clone(&completed_count);
+
+            let callback = Closure::wrap(Box::new(move |event: MessageEvent| {
+                let response: WorkerResponse =
+                    serde_wasm_bindgen::from_value(event.data()).unwrap();
+
+                let mut count = completed_count.borrow_mut();
+                *count += 1;
+
+                let sender = sender.clone();
+                spawn_local(async move {
+                    sender
+                        .clone()
+                        .send(response)
+                        .await
+                        .expect("Failed to send worker response");
+                });
+            }) as Box<dyn FnMut(MessageEvent)>);
+
+            worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
+            callback.forget();
+
+            let error_callback = Closure::wrap(Box::new(move |e: ErrorEvent| {
+                web_sys::console::error_1(&format!("Worker error: {:?}", e).into());
+            }) as Box<dyn FnMut(ErrorEvent)>);
+
+            worker.set_onerror(Some(error_callback.as_ref().unchecked_ref()));
+            error_callback.forget();
+
+            for &col_idx in chunk {
+                let message = WorkerMessage {
+                    column_index: col_idx,
+                    column_data: self.get_column(col_idx).unwrap().get_values(),
+                    header: self.headers[col_idx].clone(),
+                };
+
+                worker
+                    .post_message(&serde_wasm_bindgen::to_value(&message)?)
+                    .map_err(|e| {
+                        JsValue::from_str(&format!("Failed to post message to worker: {:?}", e))
+                    })?;
+            }
+        }
+
+        let mut columns = vec![None; self.column_count];
+        let mut received = 0;
+
+        while received < total_columns {
+            if let Some(response) = receiver.next().await {
+                columns[response.column_index] = Some(response.metadata);
+                received += 1;
+            }
+        }
+
+        for worker in workers {
+            worker.terminate();
+        }
+
+        let analysis = CSVFile {
+            columns: columns.into_iter().filter_map(|x| x).collect(),
+            row_count: self.row_count,
+            suggested_sql: self
+                .generate_sql_schema(&columns.into_iter().filter_map(|x| x).collect::<Vec<_>>()),
+        };
+
+        serde_wasm_bindgen::to_value(&analysis)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize analysis: {}", e)))
+    }
+    // Helper method to distribute column indices among workers
+    fn distribute_work(&self, num_workers: usize) -> Vec<Vec<usize>> {
+        let mut chunks = vec![Vec::new(); num_workers];
+
+        // Distribute column indices using round-robin
+        for col_idx in 0..self.column_count {
+            chunks[col_idx % num_workers].push(col_idx);
+        }
+
+        chunks
+    }
     pub fn with_thread_count(mut self, threads: usize) -> Self {
         self.thread_count = Some(threads);
         self
@@ -834,104 +949,6 @@ impl CSV {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen]
-    pub async fn analyze_with_workers(&self) -> Result<JsValue, JsValue> {
-        let available_threads = web_sys::window()
-            .unwrap()
-            .navigator()
-            .hardware_concurrency() as usize;
-
-        let num_workers = (available_threads - 1).max(1).min(self.column_count);
-
-        let (sender, receiver) = futures::channel::mpsc::channel(self.column_count);
-
-        // Spawn workers
-        let workers: Vec<Worker> = (0..num_workers)
-            .map(|_| Worker::new("./worker.js").unwrap())
-            .collect();
-
-        // Distribute work among workers
-        let chunks = self.distribute_work(num_workers);
-
-        for (worker_idx, chunk) in chunks.iter().enumerate() {
-            let worker = &workers[worker_idx];
-            let sender = sender.clone();
-
-            // Set up message handler for this worker
-            let callback = Closure::wrap(Box::new(move |event: MessageEvent| {
-                let response: WorkerResponse =
-                    serde_wasm_bindgen::from_value(event.data()).unwrap();
-                // Forward the response through the channel
-                let sender = sender.clone();
-                spawn_local(async move {
-                    sender.send(response).await.unwrap();
-                });
-            }) as Box<dyn FnMut(MessageEvent)>);
-
-            worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
-            callback.forget(); // Keep the callback alive
-
-            // Set up error handler
-            let error_callback = Closure::wrap(Box::new(move |e: ErrorEvent| {
-                web_sys::console::error_1(&format!("Worker error: {:?}", e).into());
-            }) as Box<dyn FnMut(ErrorEvent)>);
-
-            worker.set_onerror(Some(error_callback.as_ref().unchecked_ref()));
-            error_callback.forget();
-
-            // Send work to worker
-            for &col_idx in chunk {
-                let message = WorkerMessage {
-                    column_index: col_idx,
-                    column_data: self.get_column_data(col_idx),
-                    header: self.headers[col_idx].clone(),
-                };
-                worker.post_message(&serde_wasm_bindgen::to_value(&message)?)?;
-            }
-        }
-
-        // Collect results
-        let mut results = vec![None; self.column_count];
-        let mut completed = 0;
-
-        while let Some(response) = receiver.next().await {
-            results[response.column_index] = Some(response.metadata);
-            completed += 1;
-
-            if completed == self.column_count {
-                break;
-            }
-        }
-
-        // Clean up workers
-        for worker in workers {
-            worker.terminate();
-        }
-
-        // Create final analysis result
-        let columns = results.into_iter().filter_map(|r| r).collect::<Vec<_>>();
-
-        let analysis = CSVFile {
-            columns,
-            row_count: self.row_count,
-            suggested_sql: self.generate_sql_schema(&columns),
-        };
-
-        serde_wasm_bindgen::to_value(&analysis).map_err(|e| JsValue::from_str(&e.to_string()))
-    }
-
-    fn distribute_work(&self, num_workers: usize) -> Vec<Vec<usize>> {
-        let mut chunks = vec![Vec::new(); num_workers];
-
-        // Distribute column indices among workers
-        for col_idx in 0..self.column_count {
-            chunks[col_idx % num_workers].push(col_idx);
-        }
-
-        chunks
-    }
-
     fn get_column_data(&self, col_idx: usize) -> Vec<String> {
         self.data.iter().map(|row| row[col_idx].clone()).collect()
     }
@@ -1274,4 +1291,96 @@ pub fn worker_main() {
 
     global.set_onmessage(Some(callback.as_ref().unchecked_ref()));
     callback.forget();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_CSV: &str = r#"id,number,decimal,currency,date,email,phone,category,text
+1,1234,123.45,$1234.56,2024-01-01,test@example.com,(123) 456-7890,active,Some text
+2,-5678,456.78,€2345.67,2024/02/15,another@test.com,+1-234-567-8901,inactive,More text
+3,9012,-789.01,£3456.78,15/03/2024,third@email.com,123.456.7890,pending,Final text"#;
+
+    #[test]
+    fn test_csv_parsing() {
+        let csv = CSV::from_string(SAMPLE_CSV.to_string()).unwrap();
+
+        // Test basic structure
+        assert_eq!(csv.row_count(), 3);
+        assert_eq!(csv.column_count(), 9);
+
+        // Test headers
+        let headers = csv.headers();
+        let expected_headers = vec![
+            "id", "number", "decimal", "currency", "date", "email", "phone", "category", "text",
+        ];
+        assert_eq!(headers, expected_headers);
+
+        // Test each column type's data
+        let columns = [
+            // Integer column
+            (0, vec!["1", "2", "3"]),
+            // Number with negatives
+            (1, vec!["1234", "-5678", "9012"]),
+            // Decimal numbers
+            (2, vec!["123.45", "456.78", "-789.01"]),
+            // Currency with different symbols
+            (3, vec!["$1234.56", "€2345.67", "£3456.78"]),
+            // Mixed date formats
+            (4, vec!["2024-01-01", "2024/02/15", "15/03/2024"]),
+            // Email addresses
+            (
+                5,
+                vec!["test@example.com", "another@test.com", "third@email.com"],
+            ),
+            // Phone numbers in different formats
+            (6, vec!["(123) 456-7890", "+1-234-567-8901", "123.456.7890"]),
+            // Categorical data
+            (7, vec!["active", "inactive", "pending"]),
+            // Free text
+            (8, vec!["Some text", "More text", "Final text"]),
+        ];
+
+        // Verify each column's data
+        for (idx, expected_values) in columns.iter() {
+            let column = csv.get_column(*idx).unwrap();
+            assert_eq!(
+                column.get_values(),
+                *expected_values,
+                "Column {} data mismatch",
+                idx
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_column_access() {
+        let csv = CSV::from_string(SAMPLE_CSV.to_string()).unwrap();
+        assert!(
+            csv.get_column(9).is_none(),
+            "Should return None for invalid column index"
+        );
+    }
+
+    #[test]
+    fn test_empty_csv() {
+        let empty_csv = "column1,column2\n";
+        let csv = CSV::from_string(empty_csv.to_string()).unwrap();
+        assert_eq!(csv.row_count(), 0);
+        assert_eq!(csv.column_count(), 2);
+        assert_eq!(csv.headers(), vec!["column1", "column2"]);
+    }
+
+    #[test]
+    fn test_thread_count_setting() {
+        let csv = CSV::from_string(SAMPLE_CSV.to_string())
+            .unwrap()
+            .with_thread_count(4);
+
+        // Verify the CSV still works after setting thread count
+        assert_eq!(csv.row_count(), 3);
+        assert_eq!(csv.column_count(), 9);
+        assert!(csv.get_column(0).is_some());
+    }
 }
