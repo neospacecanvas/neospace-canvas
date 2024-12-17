@@ -1306,19 +1306,20 @@ static TYPE_PATTERNS: Lazy<HashMap<DataType, Vec<Regex>>> = Lazy::new(|| {
     m.insert(
         DataType::Currency,
         vec![
-            // Dollar
+            // Dollar with commas
             Regex::new(r"^\$\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
-            // Euro
+            // Euro with commas
             Regex::new(r"^€\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
-            // Pound
+            // Pound with commas
             Regex::new(r"^£\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
-            // Currency code at end
-            Regex::new(r"^\d{1,3}(,\d{3})*(\.\d{2})?\s*(USD|EUR|GBP)$").unwrap(),
             // Simple currency (no commas)
             Regex::new(r"^[$€£]\d+(\.\d{2})?$").unwrap(),
+            // Currency code at end - with commas
+            Regex::new(r"^\d{1,3}(,\d{3})*(\.\d{2})?\s*(USD|EUR|GBP)$").unwrap(),
+            // Currency code at end - without commas
+            Regex::new(r"^\d+(\.\d{2})?\s*(USD|EUR|GBP)$").unwrap(),
         ],
-    );
-    // Date patterns (common formats)
+    ); // Date patterns (common formats)
     m.insert(
         DataType::Date,
         vec![
