@@ -1,0 +1,23 @@
+src/
+├── lib.rs            # Root library file with crate-level declarations
+├── csv.rs            # Core CSV struct and implementation
+├── types/
+│   ├── mod.rs        # Types module aggregator
+│   ├── data_type.rs  # DataType enum and basic type functionality
+│   ├── currency.rs   # Currency type detection and handling
+│   ├── date.rs       # Date type detection and handling
+│   ├── email.rs      # Email type detection and handling
+│   ├── numeric.rs    # Integer and Decimal type detection
+│   ├── phone.rs      # Phone type detection and handling
+│   └── categorical.rs # Categorical type detection and handling
+├── analysis/
+│   ├── mod.rs        # Analysis module aggregator
+│   ├── anomaly.rs    # Anomaly detection functionality
+│   ├── statistics.rs # Statistical analysis functions
+│   └── sql.rs        # SQL type inference and schema generation
+├── worker/
+│   ├── mod.rs        # Worker module aggregator
+│   └── messages.rs   # Worker message types and handling
+└── utils/
+    ├── mod.rs        # Utils module aggregator
+    └── patterns.rs   # Shared regex patterns and utilities
