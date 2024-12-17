@@ -1095,30 +1095,81 @@ impl CSV {
             return (DataType::Text, 1.0);
         }
 
-        // Count matches for each type
-        let mut type_matches: HashMap<DataType, usize> = HashMap::new();
-        let total_non_empty = non_empty_values.len();
+        // Track matches for each type
+        let mut matches = HashMap::new();
+        let total_values = non_empty_values.len();
 
-        // First pass: Check each value against all patterns
+        // First pass: Check all specific patterns for each value
         for &value in &non_empty_values {
             let value = value.trim();
 
-            // Try each type pattern
-            let mut matched = false;
-            for (data_type, patterns) in TYPE_PATTERNS.iter() {
-                if patterns.iter().any(|pattern| pattern.is_match(value)) {
-                    *type_matches.entry(data_type.clone()).or_insert(0) += 1;
-                    matched = true;
-                    break; // Stop after first match
+            // Order of checking from most specific to most general:
+
+            // 1. Currency (most specific number format with symbols)
+            if let Some(currency_patterns) = TYPE_PATTERNS.get(&DataType::Currency) {
+                if currency_patterns
+                    .iter()
+                    .any(|pattern| pattern.is_match(value))
+                {
+                    *matches.entry(DataType::Currency).or_insert(0) += 1;
+                    continue; // Move to next value if currency is found
                 }
             }
 
-            // If no patterns matched, check for categorical
-            if !matched && self.could_be_categorical(value) {
-                *type_matches.entry(DataType::Categorical).or_insert(0) += 1;
-            } else if !matched {
-                *type_matches.entry(DataType::Text).or_insert(0) += 1;
+            // 2. Phone (specific format with symbols)
+            if let Some(phone_patterns) = TYPE_PATTERNS.get(&DataType::Phone) {
+                if phone_patterns.iter().any(|pattern| pattern.is_match(value)) {
+                    *matches.entry(DataType::Phone).or_insert(0) += 1;
+                    continue;
+                }
             }
+
+            // 3. Email (specific format with @ and domain)
+            if let Some(email_patterns) = TYPE_PATTERNS.get(&DataType::Email) {
+                if email_patterns.iter().any(|pattern| pattern.is_match(value)) {
+                    *matches.entry(DataType::Email).or_insert(0) += 1;
+                    continue;
+                }
+            }
+
+            // 4. Date (specific format with separators)
+            if let Some(date_patterns) = TYPE_PATTERNS.get(&DataType::Date) {
+                if date_patterns.iter().any(|pattern| pattern.is_match(value)) {
+                    *matches.entry(DataType::Date).or_insert(0) += 1;
+                    continue;
+                }
+            }
+
+            // 5. Decimal (numbers with decimal point)
+            if let Some(decimal_patterns) = TYPE_PATTERNS.get(&DataType::Decimal) {
+                if decimal_patterns
+                    .iter()
+                    .any(|pattern| pattern.is_match(value))
+                {
+                    *matches.entry(DataType::Decimal).or_insert(0) += 1;
+                    continue;
+                }
+            }
+
+            // 6. Integer (whole numbers)
+            if let Some(integer_patterns) = TYPE_PATTERNS.get(&DataType::Integer) {
+                if integer_patterns
+                    .iter()
+                    .any(|pattern| pattern.is_match(value))
+                {
+                    *matches.entry(DataType::Integer).or_insert(0) += 1;
+                    continue;
+                }
+            }
+
+            // 7. Check for categorical (limited set of repeating values)
+            if self.could_be_categorical(value) {
+                *matches.entry(DataType::Categorical).or_insert(0) += 1;
+                continue;
+            }
+
+            // 8. If nothing else matches, it's text (most general)
+            *matches.entry(DataType::Text).or_insert(0) += 1;
         }
 
         // Special case for categorical data
@@ -1129,16 +1180,44 @@ impl CSV {
             }
         }
 
-        // Find the most common type and calculate confidence
-        let (data_type, count) = type_matches
+        // Find the most specific type that matches all or most values
+        let type_ordering = [
+            DataType::Currency,
+            DataType::Phone,
+            DataType::Email,
+            DataType::Date,
+            DataType::Decimal,
+            DataType::Integer,
+            DataType::Categorical,
+            DataType::Text,
+        ];
+
+        for data_type in type_ordering.iter() {
+            if let Some(&count) = matches.get(data_type) {
+                let confidence = count as f64 / total_values as f64;
+                // If we have a high confidence match, use this type
+                if confidence > 0.8 {
+                    return (data_type.clone(), confidence);
+                }
+            }
+        }
+
+        // If no type has high confidence, find the most specific type with the most matches
+        let (best_type, count) = matches
             .iter()
-            .max_by_key(|(_, &count)| count)
+            .max_by_key(|(data_type, &count)| {
+                // Create a tuple of (count, priority) where priority is the reverse index in type_ordering
+                let priority = type_ordering.len()
+                    - type_ordering
+                        .iter()
+                        .position(|t| t == *data_type)
+                        .unwrap_or(0);
+                (count, priority)
+            })
             .unwrap_or((&DataType::Text, &0));
 
-        let confidence = *count as f64 / total_non_empty as f64;
-        (data_type.clone(), confidence)
+        (best_type.clone(), *count as f64 / total_values as f64)
     }
-
     fn could_be_categorical(&self, value: &str) -> bool {
         // Quick check for common categorical values
         let value_lower = value.to_lowercase();
@@ -1227,13 +1306,18 @@ static TYPE_PATTERNS: Lazy<HashMap<DataType, Vec<Regex>>> = Lazy::new(|| {
     m.insert(
         DataType::Currency,
         vec![
+            // Dollar
             Regex::new(r"^\$\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
+            // Euro
             Regex::new(r"^€\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
+            // Pound
             Regex::new(r"^£\s*\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap(),
+            // Currency code at end
             Regex::new(r"^\d{1,3}(,\d{3})*(\.\d{2})?\s*(USD|EUR|GBP)$").unwrap(),
+            // Simple currency (no commas)
+            Regex::new(r"^[$€£]\d+(\.\d{2})?$").unwrap(),
         ],
     );
-
     // Date patterns (common formats)
     m.insert(
         DataType::Date,
@@ -1382,5 +1466,252 @@ mod tests {
         assert_eq!(csv.row_count(), 3);
         assert_eq!(csv.column_count(), 9);
         assert!(csv.get_column(0).is_some());
+    }
+}
+
+#[cfg(test)]
+mod advanced_tests {
+    use super::*;
+
+    #[test]
+    fn test_type_inference() {
+        // Each value needs to be in a proper CSV format with consistent columns
+        let number_test = r#"numbers,extra
+1,test
+-1000,test
+1234.56,test
+$1234.56,test
+€1234.56,test
+1234.56,test"#;
+
+        let csv = CSV::from_string(number_test.to_string()).unwrap();
+        let values: Vec<&str> = csv.data.iter().map(|row| row[0].as_str()).collect();
+
+        // Test each value individually
+        for value in ["1", "-1000", "1234.56", "$1234.56", "€1234.56"] {
+            let (detected_type, confidence) = csv.infer_type(&[value]);
+            assert!(confidence > 0.5, "Low confidence for value: {}", value);
+            match value {
+                v if v.starts_with('$') || v.starts_with('€') => {
+                    assert_eq!(detected_type, DataType::Currency)
+                }
+                v if v.contains('.') => assert_eq!(detected_type, DataType::Decimal),
+                _ => assert_eq!(detected_type, DataType::Integer),
+            }
+        }
+    }
+
+    #[test]
+    fn test_date_format_detection() {
+        let dates_csv = r#"dates,extra
+2024-01-01,test
+01/02/2024,test
+2024/01/01,test
+15-03-2024,test"#;
+
+        let csv = CSV::from_string(dates_csv.to_string()).unwrap();
+        let col = Column {
+            header: &csv.headers()[0],
+            data: Arc::clone(&csv.data),
+            column_index: 0,
+        };
+
+        for &date in &["2024-01-01", "01/02/2024", "15-03-2024", "2024/01/01"] {
+            let format = csv.detect_date_format(&[date]);
+            assert!(
+                !format.contains("UNKNOWN"),
+                "Failed to detect format for {}",
+                date
+            );
+        }
+    }
+
+    #[test]
+    fn test_anomaly_detection() {
+        let anomaly_csv = r#"mixed,extra
+1,test
+2,test
+three,test
+4,test
+5.0,test
+VI,test
+7,test"#;
+
+        let csv = CSV::from_string(anomaly_csv.to_string()).unwrap();
+        let values: Vec<&str> = csv.data.iter().map(|row| row[0].as_str()).collect();
+
+        let anomalies = csv.detect_anomalies(&values, &DataType::Integer);
+
+        // Check that non-integer values are detected as anomalies
+        for value in ["three", "5.0", "VI"] {
+            let found = anomalies.iter().any(|a| a.value == value);
+            assert!(found, "Should detect '{}' as an anomaly", value);
+        }
+    }
+
+    #[test]
+    fn test_categorical_detection() {
+        let categorical_csv = r#"status,count
+active,100
+inactive,50
+active,75
+pending,25
+inactive,30
+active,80
+pending,45
+active,90
+inactive,60
+pending,35
+active,70
+inactive,40"#; // Added more rows to meet the categorical criteria
+
+        let csv = CSV::from_string(categorical_csv.to_string()).unwrap();
+        let values: Vec<&str> = csv.data.iter().map(|row| row[0].as_str()).collect();
+
+        // The original criteria for categorical data requires:
+        // 1. Low cardinality relative to total values (unique_ratio < 0.05)
+        // 2. At least 20 values for statistics
+        assert!(
+            csv.is_likely_categorical(&values),
+            "Should detect repeating status values as categorical"
+        );
+    }
+
+    #[test]
+    fn test_sql_type_inference() {
+        let mixed_csv = r#"id,price,category,description
+1,10.50,active,short
+2,1500.75,inactive,medium
+3,25000.25,pending,longertext"#;
+
+        let csv = CSV::from_string(mixed_csv.to_string()).unwrap();
+
+        // Test ID column
+        let id_col = Column {
+            header: &csv.headers()[0],
+            data: Arc::clone(&csv.data),
+            column_index: 0,
+        };
+        let id_metadata = csv.analyze_single_column(id_col);
+        assert!(
+            id_metadata.sql_type.to_uppercase().contains("INT"),
+            "ID should be inferred as INT type, got {}",
+            id_metadata.sql_type
+        );
+
+        // Test price column
+        let price_col = Column {
+            header: &csv.headers()[1],
+            data: Arc::clone(&csv.data),
+            column_index: 1,
+        };
+        let price_metadata = csv.analyze_single_column(price_col);
+        assert!(
+            price_metadata.sql_type.to_uppercase().contains("DECIMAL"),
+            "Price should be DECIMAL type, got {}",
+            price_metadata.sql_type
+        );
+
+        // Test category column
+        let category_col = Column {
+            header: &csv.headers()[2],
+            data: Arc::clone(&csv.data),
+            column_index: 2,
+        };
+        let category_metadata = csv.analyze_single_column(category_col);
+        assert!(
+            category_metadata
+                .sql_type
+                .to_uppercase()
+                .contains("VARCHAR")
+                || category_metadata.sql_type.to_uppercase().contains("ENUM"),
+            "Category should be VARCHAR or ENUM type, got {}",
+            category_metadata.sql_type
+        );
+    }
+
+    #[test]
+    fn test_numeric_statistics() {
+        let numbers_csv = r#"values,extra
+10,test
+20,test
+30,test
+40,test
+50,test
+-10,test
+0,test"#;
+
+        let csv = CSV::from_string(numbers_csv.to_string()).unwrap();
+        let values: Vec<&str> = csv.data.iter().map(|row| row[0].as_str()).collect();
+
+        if let Some(stats) = csv.calculate_numeric_stats(&values) {
+            assert_eq!(stats.min, -10.0);
+            assert_eq!(stats.max, 50.0);
+            assert_eq!(stats.mean, 20.0);
+            assert_eq!(stats.median, 20.0);
+
+            // Test quartiles
+            assert_eq!(stats.quartiles[0], 0.0); // Q1
+            assert_eq!(stats.quartiles[1], 20.0); // Q2 (median)
+            assert_eq!(stats.quartiles[2], 40.0); // Q3
+        } else {
+            panic!("Failed to calculate numeric stats");
+        }
+    }
+}
+
+#[cfg(test)]
+mod currency_tests {
+    use super::*;
+
+    #[test]
+    fn test_currency_patterns() {
+        // Print out the actual patterns being used
+        let patterns = &TYPE_PATTERNS
+            .get(&DataType::Currency)
+            .expect("Currency patterns should exist");
+        for (i, pattern) in patterns.iter().enumerate() {
+            println!("Currency pattern {}: {}", i, pattern.as_str());
+        }
+
+        // Test each currency pattern individually
+        let test_cases = [
+            "$1234.56",
+            "€1234.56",
+            "£1234.56",
+            "$1,234.56",
+            "€1,234.56",
+            "£1,234.56",
+            "1234.56 USD",
+            "1234.56 EUR",
+            "1234.56 GBP",
+        ];
+
+        for &value in test_cases.iter() {
+            let (data_type, confidence) = CSV::dummy().infer_type(&[value]);
+            assert_eq!(
+                data_type,
+                DataType::Currency,
+                "Value '{}' should be detected as currency",
+                value
+            );
+            assert!(
+                confidence > 0.7,
+                "Should have high confidence for currency value '{}'",
+                value
+            );
+        }
+    }
+
+    impl CSV {
+        fn dummy() -> Self {
+            CSV {
+                data: Arc::new(vec![]),
+                headers: Arc::new(vec![]),
+                row_count: 0,
+                column_count: 0,
+                thread_count: None,
+            }
+        }
     }
 }
