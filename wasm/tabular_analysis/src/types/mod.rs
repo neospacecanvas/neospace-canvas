@@ -1,4 +1,5 @@
 mod currency;
+mod email;
 mod phone;
 
 use serde::{Deserialize, Serialize};
