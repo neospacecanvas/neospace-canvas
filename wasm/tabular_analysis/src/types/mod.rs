@@ -1,4 +1,5 @@
 mod currency;
+mod phone;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
