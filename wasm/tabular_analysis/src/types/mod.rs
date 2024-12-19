@@ -1,4 +1,5 @@
-// types/data_type.rs
+mod currency;
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
