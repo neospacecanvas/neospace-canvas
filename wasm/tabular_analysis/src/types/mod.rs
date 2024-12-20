@@ -2,6 +2,7 @@ mod currency;
 mod date;
 //TODO: add back datetime when it becomes important
 //mod datetime;
+mod categorical;
 mod email;
 mod numeric;
 mod phone;
