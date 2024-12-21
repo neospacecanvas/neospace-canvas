@@ -14,7 +14,7 @@ cargo build
 
 testing
 ```bash
-wasm-pack test --chrome --headless
+wasm-pack test --node
 ```
 or test base rust code with cargo
 ```bash

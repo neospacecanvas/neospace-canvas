@@ -1,3 +1,5 @@
+use wasm_bindgen::prelude::*;
+
 mod currency;
 mod date;
 //TODO: add back datetime when it becomes important
@@ -11,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Represents the detected data type of a column
-#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Clone)]
+#[wasm_bindgen]
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Clone, Copy)]
 pub enum DataType {
     Integer,
     Decimal,
