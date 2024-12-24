@@ -1,8 +1,10 @@
-use crate::types::DataType;
+// Import our new type scoring module
+use crate::types::{type_scoring::TypeScores, DataType};
 use csv::Reader;
 use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::{from_value, to_value};
 use std::io::Cursor;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::*; // Add explicit import for to_value
 
 #[wasm_bindgen(getter_with_clone)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -12,7 +14,6 @@ pub struct ColumnMetadata {
     pub confidence: f64,
 }
 
-// Main CSV struct needs wasm_bindgen
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct CSV {
@@ -20,7 +21,6 @@ pub struct CSV {
     row_count: usize,
 }
 
-// Internal struct doesn't need wasm_bindgen
 #[derive(Debug)]
 struct Column {
     header: String,
@@ -30,7 +30,6 @@ struct Column {
 
 #[wasm_bindgen]
 impl CSV {
-    // Constructor needs to be marked as wasm_bindgen
     #[wasm_bindgen(constructor)]
     pub fn from_string(raw_data: String) -> Result<CSV, JsError> {
         let cursor = Cursor::new(raw_data);
@@ -75,6 +74,28 @@ impl CSV {
     }
 
     #[wasm_bindgen]
+    pub fn infer_column_types(&mut self) -> Result<(), JsError> {
+        for i in 0..self.column_count() {
+            if let Some((header, values)) = self.get_column(i) {
+                // Use our new TypeScores to analyze the column
+                let scores = TypeScores::from_column(values);
+                let (data_type, confidence) = scores.best_type();
+
+                let metadata = ColumnMetadata {
+                    name: header.to_string(),
+                    data_type,
+                    confidence,
+                };
+
+                let js_metadata = to_value(&metadata)
+                    .map_err(|e| JsError::new(&format!("Failed to serialize metadata: {}", e)))?;
+                self.set_column_metadata(i, js_metadata)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub fn row_count(&self) -> usize {
         self.row_count
     }
@@ -86,8 +107,7 @@ impl CSV {
             .iter()
             .map(|col| col.header.clone())
             .collect::<Vec<String>>();
-        serde_wasm_bindgen::to_value(&headers)
-            .map_err(|e| JsError::new(&format!("Failed to serialize headers: {}", e)))
+        to_value(&headers).map_err(|e| JsError::new(&format!("Failed to serialize headers: {}", e)))
     }
 
     #[wasm_bindgen]
@@ -96,7 +116,7 @@ impl CSV {
         index: usize,
         js_metadata: JsValue,
     ) -> Result<(), JsError> {
-        let metadata: ColumnMetadata = serde_wasm_bindgen::from_value(js_metadata)
+        let metadata: ColumnMetadata = from_value(js_metadata)
             .map_err(|e| JsError::new(&format!("Failed to deserialize metadata: {}", e)))?;
 
         if let Some(column) = self.columns.get_mut(index) {
@@ -115,16 +135,15 @@ impl CSV {
             .and_then(|col| col.metadata.as_ref())
             .ok_or_else(|| JsError::new("No metadata found for column"))?;
 
-        serde_wasm_bindgen::to_value(&metadata)
+        to_value(&metadata)
             .map_err(|e| JsError::new(&format!("Failed to serialize metadata: {}", e)))
     }
-    // Public methods need wasm_bindgen
+
     #[wasm_bindgen]
     pub fn column_count(&self) -> usize {
         self.columns.len()
     }
 
-    // Non-wasm methods for internal use
     pub(crate) fn get_column(&self, index: usize) -> Option<(&str, &[String])> {
         self.columns
             .get(index)
@@ -138,7 +157,7 @@ impl CSV {
             .collect()
     }
 }
-// For tests, they only run in native environment
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,36 +167,29 @@ mod tests {
     fn test_csv_from_string() {
         let data = "header1,header2\nvalue1,value2\nvalue4,value5";
         let csv = CSV::from_string(data.to_string()).unwrap();
-
         assert_eq!(csv.column_count(), 2);
-
         let (header, values) = csv.get_column(0).unwrap();
         assert_eq!(header, "header1");
         assert_eq!(values, &["value1", "value4"]);
     }
 
     #[wasm_bindgen_test]
-    fn test_wasm_csv_basics() {
-        let data = "header1,header2\nvalue1,value2\nvalue4,value5";
+    fn test_type_inference() {
+        // Test numeric column
+        let data = "numbers\n123\n456\n789";
         let mut csv = CSV::from_string(data.to_string()).unwrap();
+        csv.infer_column_types().unwrap();
 
-        assert_eq!(csv.column_count(), 2);
-        assert_eq!(csv.row_count(), 2);
+        let metadata: ColumnMetadata = from_value(csv.get_column_metadata(0).unwrap()).unwrap();
+        assert_eq!(metadata.data_type, DataType::Integer);
+        assert!(metadata.confidence > 0.9);
 
-        let headers: Vec<String> = serde_wasm_bindgen::from_value(csv.headers().unwrap()).unwrap();
-        assert_eq!(headers, vec!["header1", "header2"]);
+        // Test mixed types
+        let data = "mixed\n123\nabc\n456";
+        let mut csv = CSV::from_string(data.to_string()).unwrap();
+        csv.infer_column_types().unwrap();
 
-        let metadata = ColumnMetadata {
-            name: "test".to_string(),
-            data_type: DataType::Text,
-            confidence: 1.0,
-        };
-
-        let js_metadata = serde_wasm_bindgen::to_value(&metadata).unwrap();
-        csv.set_column_metadata(0, js_metadata).unwrap();
-
-        let retrieved_metadata: ColumnMetadata =
-            serde_wasm_bindgen::from_value(csv.get_column_metadata(0).unwrap()).unwrap();
-        assert_eq!(retrieved_metadata.name, "test");
+        let metadata: ColumnMetadata = from_value(csv.get_column_metadata(0).unwrap()).unwrap();
+        assert_eq!(metadata.data_type, DataType::Text);
     }
 }

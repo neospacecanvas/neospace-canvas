@@ -8,6 +8,7 @@ mod categorical;
 mod email;
 mod numeric;
 mod phone;
+pub mod type_scoring;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
