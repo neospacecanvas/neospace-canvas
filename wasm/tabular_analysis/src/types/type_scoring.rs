@@ -17,41 +17,101 @@ pub struct TypeScores {
 impl TypeScores {
     /// Creates TypeScores from analyzing a column of values
     pub fn from_column(values: &[String]) -> Self {
-        // Start with zeroed scores
-        let mut scores = TypeScores::default();
-        let mut valid_values = 0;
+        // Get non-empty values
+        let non_empty_values: Vec<&str> = values
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
 
-        // Process each non-empty value
-        for value in values {
-            let value = value.trim();
-            if !value.is_empty() {
-                valid_values += 1;
-                // Add confidence scores from each type detector
-                scores.numeric += NumericType::detect_confidence(value);
-                scores.currency += CurrencyType::detect_confidence(value);
-                scores.date += DateType::detect_confidence(value);
-                scores.email += EmailType::detect_confidence(value);
-                scores.phone += PhoneType::detect_confidence(value);
-                scores.categorical += CategoricalType::detect_confidence(value);
-            }
+        // If all values are empty, return default scores (will resolve to Text type)
+        if non_empty_values.is_empty() {
+            return TypeScores::default();
         }
 
-        // Average the scores by dividing by number of valid values
-        if valid_values > 0 {
-            scores.numeric /= valid_values as f64;
-            scores.currency /= valid_values as f64;
-            scores.date /= valid_values as f64;
-            scores.email /= valid_values as f64;
-            scores.phone /= valid_values as f64;
-            scores.categorical /= valid_values as f64;
-        }
+        // For each type, check if ALL values match that type
+        let scores = TypeScores {
+            numeric: if non_empty_values
+                .iter()
+                .all(|&v| NumericType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| NumericType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+            currency: if non_empty_values
+                .iter()
+                .all(|&v| CurrencyType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| CurrencyType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+            date: if non_empty_values
+                .iter()
+                .all(|&v| DateType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| DateType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+            email: if non_empty_values
+                .iter()
+                .all(|&v| EmailType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| EmailType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+            phone: if non_empty_values
+                .iter()
+                .all(|&v| PhoneType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| PhoneType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+            categorical: if non_empty_values
+                .iter()
+                .all(|&v| CategoricalType::detect_confidence(v) == 1.0)
+            {
+                1.0
+            } else {
+                non_empty_values
+                    .iter()
+                    .map(|&v| CategoricalType::detect_confidence(v))
+                    .sum::<f64>()
+                    / non_empty_values.len() as f64
+            },
+        };
 
         scores
     }
 
-    /// Returns the most likely data type and its confidence score
+    /// Returns the appropriate data type and its confidence score
     pub fn best_type(&self) -> (DataType, f64) {
-        let scores = [
+        // First create the array and store it in a named variable
+        let type_scores = [
             (DataType::Integer, self.numeric),
             (DataType::Currency, self.currency),
             (DataType::Date, self.date),
@@ -60,12 +120,16 @@ impl TypeScores {
             (DataType::Categorical, self.categorical),
         ];
 
-        // Find type with highest confidence
-        scores
-            .iter()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-            .map(|(t, c)| (t.clone(), *c))
-            .unwrap_or((DataType::Text, 0.0))
+        // Now use into_iter() instead of iter() to take ownership of the values
+        let perfect_match = type_scores
+            .into_iter()
+            .find(|(_, confidence)| (confidence - 1.0).abs() < f64::EPSILON);
+
+        if let Some((dtype, confidence)) = perfect_match {
+            (dtype, confidence) // No need for clone() or deref since we own the values
+        } else {
+            (DataType::Text, 0.0)
+        }
     }
 }
 
