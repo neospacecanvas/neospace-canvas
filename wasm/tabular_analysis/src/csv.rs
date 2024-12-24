@@ -503,3 +503,348 @@ mod tests {
         assert_eq!(csv.row_count(), 0);
     }
 }
+
+#[cfg(test)]
+mod example_csv_file_tests {
+    use super::*;
+
+    // Regular Rust tests with hardcoded data for non-WASM environments
+    #[test]
+    fn test_pokemon_types_with_sample_data() {
+        let data = "\
+#,Name,Type 1,HP,Legendary\n\
+1,Bulbasaur,Grass,45,false\n\
+4,Charmander,Fire,39,false\n\
+7,Squirtle,Water,44,false\n\
+150,Mewtwo,Psychic,106,true\n\
+151,Mew,Psychic,100,true\
+";
+        let mut csv = CSV::from_string(data.to_string()).unwrap();
+        csv.infer_column_types().unwrap();
+
+        // Check # column (Integer)
+        let number_meta: ColumnMetadata = from_value(csv.get_column_metadata(0).unwrap()).unwrap();
+        assert_eq!(number_meta.data_type, DataType::Integer);
+
+        // Check Name column (Text)
+        let name_meta: ColumnMetadata = from_value(csv.get_column_metadata(1).unwrap()).unwrap();
+        assert_eq!(name_meta.data_type, DataType::Text);
+
+        // Check Type 1 column (Categorical)
+        let type_meta: ColumnMetadata = from_value(csv.get_column_metadata(2).unwrap()).unwrap();
+        assert_eq!(type_meta.data_type, DataType::Categorical);
+
+        // Check HP column (Integer)
+        let hp_meta: ColumnMetadata = from_value(csv.get_column_metadata(3).unwrap()).unwrap();
+        assert_eq!(hp_meta.data_type, DataType::Integer);
+
+        // Check Legendary column (Categorical)
+        let legendary_meta: ColumnMetadata =
+            from_value(csv.get_column_metadata(4).unwrap()).unwrap();
+        assert_eq!(legendary_meta.data_type, DataType::Categorical);
+    }
+
+    #[test]
+    fn test_starters_types_with_sample_data() {
+        let data = "\
+name,type1,type2,hp,attack,height_m,weight_kg,generation\n\
+Bulbasaur,Grass,Poison,45,49,0.7,6.9,1\n\
+Charmander,Fire,,39,52,0.6,8.5,1\n\
+Squirtle,Water,,44,48,0.5,9.0,1\
+";
+        let mut csv = CSV::from_string(data.to_string()).unwrap();
+        csv.infer_column_types().unwrap();
+
+        // Test name (Text)
+        let name_meta: ColumnMetadata = from_value(csv.get_column_metadata(0).unwrap()).unwrap();
+        assert_eq!(name_meta.data_type, DataType::Text);
+
+        // Test type columns (Categorical)
+        let type1_meta: ColumnMetadata = from_value(csv.get_column_metadata(1).unwrap()).unwrap();
+        assert_eq!(type1_meta.data_type, DataType::Categorical);
+
+        // Test numeric columns (Integer)
+        let hp_meta: ColumnMetadata = from_value(csv.get_column_metadata(3).unwrap()).unwrap();
+        assert_eq!(hp_meta.data_type, DataType::Integer);
+
+        // Test decimal columns (Decimal)
+        let height_meta: ColumnMetadata = from_value(csv.get_column_metadata(5).unwrap()).unwrap();
+        assert_eq!(height_meta.data_type, DataType::Decimal);
+    }
+}
+
+#[cfg(test)]
+mod example_csv_file_wasm_tests {
+    use super::*;
+    use js_sys::{Object, Reflect, Uint8Array};
+    use wasm_bindgen::prelude::*;
+    use wasm_bindgen_futures::JsFuture;
+    use wasm_bindgen_test::*;
+    use web_sys::Window;
+
+    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+    async fn read_csv_file(filename: &str) -> Result<String, JsError> {
+        // Get the window object
+        let window = web_sys::window().ok_or_else(|| JsError::new("No window object found"))?;
+
+        // Access the fs object through the window's custom property
+        let fs = Reflect::get(&window, &JsValue::from_str("fs"))
+            .map_err(|_| JsError::new("No fs object found on window"))?;
+
+        // Call readFile on the fs object
+        let read_file = Reflect::get(&fs, &JsValue::from_str("readFile"))
+            .map_err(|_| JsError::new("No readFile method found on fs"))?;
+
+        // Create options object for UTF-8 encoding
+        let options = Object::new();
+        Reflect::set(
+            &options,
+            &JsValue::from_str("encoding"),
+            &JsValue::from_str("utf8"),
+        )
+        .map_err(|_| JsError::new("Failed to set encoding option"))?;
+
+        // Convert readFile to a JavaScript function and call it
+        let read_file_func = js_sys::Function::from(read_file);
+        let promise = read_file_func
+            .call2(&fs, &JsValue::from_str(filename), &options)
+            .map_err(|_| JsError::new("Failed to call readFile"))?;
+
+        // Convert to Promise, handling the conversion error explicitly
+        let promise = promise
+            .dyn_into::<js_sys::Promise>()
+            .map_err(|_| JsError::new("Failed to convert to Promise"))?;
+
+        // Wait for the promise to resolve
+        let content = JsFuture::from(promise)
+            .await
+            .map_err(|e| JsError::new(&format!("Failed to read file: {:?}", e)))?;
+
+        // Convert the content to a string
+        let content_str = content
+            .as_string()
+            .ok_or_else(|| JsError::new("Failed to convert file content to string"))?;
+
+        Ok(content_str)
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_pokemon_csv_types() {
+        // Read the actual pokemon.csv file
+        let csv_content = read_csv_file("pokemon.csv").await.unwrap();
+        let mut csv = CSV::from_string(csv_content).unwrap();
+        csv.infer_column_types().unwrap();
+
+        // Test #/Number column (should be Integer)
+        let number_meta: ColumnMetadata = from_value(csv.get_column_metadata(0).unwrap()).unwrap();
+        assert_eq!(number_meta.data_type, DataType::Integer);
+        assert!(
+            number_meta.confidence > 0.9,
+            "Should have high confidence for Pokemon numbers"
+        );
+
+        // Test Name column (should be Text)
+        let name_meta: ColumnMetadata = from_value(csv.get_column_metadata(1).unwrap()).unwrap();
+        assert_eq!(name_meta.data_type, DataType::Text);
+
+        // Test Type 1 column (should be Categorical)
+        let type1_meta: ColumnMetadata = from_value(csv.get_column_metadata(2).unwrap()).unwrap();
+        assert_eq!(type1_meta.data_type, DataType::Categorical);
+        assert!(
+            type1_meta.confidence > 0.8,
+            "Should have high confidence for Pokemon types"
+        );
+
+        // Test Type 2 column (should be Categorical)
+        let type2_meta: ColumnMetadata = from_value(csv.get_column_metadata(3).unwrap()).unwrap();
+        assert_eq!(type2_meta.data_type, DataType::Categorical);
+
+        // Test Total column (should be Integer)
+        let total_meta: ColumnMetadata = from_value(csv.get_column_metadata(4).unwrap()).unwrap();
+        assert_eq!(total_meta.data_type, DataType::Integer);
+        assert!(
+            total_meta.confidence > 0.9,
+            "Should have high confidence for total stats"
+        );
+
+        // Test stat columns (should all be Integer)
+        let stat_columns = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"];
+        for (i, &name) in stat_columns.iter().enumerate() {
+            let stat_meta: ColumnMetadata =
+                from_value(csv.get_column_metadata(i + 5).unwrap()).unwrap();
+            assert_eq!(
+                stat_meta.data_type,
+                DataType::Integer,
+                "Stat column {} ({}) should be Integer",
+                i + 5,
+                name
+            );
+            assert!(
+                stat_meta.confidence > 0.9,
+                "Should have high confidence for {} stats",
+                name
+            );
+        }
+
+        // Test Generation column (should be Integer)
+        let gen_meta: ColumnMetadata = from_value(csv.get_column_metadata(11).unwrap()).unwrap();
+        assert_eq!(gen_meta.data_type, DataType::Integer);
+        assert!(
+            gen_meta.confidence > 0.9,
+            "Should have high confidence for generation"
+        );
+
+        // Test Legendary column (should be Categorical)
+        let legendary_meta: ColumnMetadata =
+            from_value(csv.get_column_metadata(12).unwrap()).unwrap();
+        assert_eq!(legendary_meta.data_type, DataType::Categorical);
+        assert!(
+            legendary_meta.confidence > 0.9,
+            "Should have high confidence for legendary status"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_starters_csv_types() {
+        // Read the actual starters.csv file
+        let csv_content = read_csv_file("starters.csv").await.unwrap();
+        let mut csv = CSV::from_string(csv_content).unwrap();
+        csv.infer_column_types().unwrap();
+
+        // Define column groups with their expected types
+        let integer_columns = [
+            ("attack", 19),
+            ("base_egg_steps", 20),
+            ("base_happiness", 21),
+            ("base_total", 22),
+            ("capture_rate", 23),
+            ("defense", 25),
+            ("experience_growth", 26),
+            ("hp", 28),
+            ("pokedex_number", 32),
+            ("sp_attack", 33),
+            ("sp_defense", 34),
+            ("speed", 35),
+            ("generation", 39),
+            ("is_legendary", 40),
+        ];
+
+        let decimal_columns = [
+            ("against_bug", 1),
+            ("against_electric", 4),
+            ("against_fairy", 5),
+            ("against_fight", 6),
+            ("against_fire", 7),
+            ("against_flying", 8),
+            ("against_ghost", 9),
+            ("against_grass", 10),
+            ("against_ground", 11),
+            ("against_ice", 12),
+            ("against_normal", 13),
+            ("against_poison", 14),
+            ("against_psychic", 15),
+            ("against_rock", 16),
+            ("against_steel", 17),
+            ("against_water", 18),
+            ("height_m", 27),
+            ("percentage_male", 31),
+            ("weight_kg", 38),
+        ];
+
+        let categorical_columns = [
+            ("abilities", 0),
+            ("classfication", 24),
+            ("type1", 36),
+            ("type2", 37),
+        ];
+
+        let text_columns = [("japanese_name", 29), ("name", 30)];
+
+        // Test integer columns
+        for (name, idx) in integer_columns.iter() {
+            let meta: ColumnMetadata = from_value(csv.get_column_metadata(*idx).unwrap()).unwrap();
+            assert_eq!(
+                meta.data_type,
+                DataType::Integer,
+                "Column {} ({}) should be Integer",
+                idx,
+                name
+            );
+            assert!(
+                meta.confidence > 0.8,
+                "Should have high confidence for integer column {} ({})",
+                idx,
+                name
+            );
+        }
+
+        // Test decimal columns
+        for (name, idx) in decimal_columns.iter() {
+            let meta: ColumnMetadata = from_value(csv.get_column_metadata(*idx).unwrap()).unwrap();
+            assert_eq!(
+                meta.data_type,
+                DataType::Decimal,
+                "Column {} ({}) should be Decimal",
+                idx,
+                name
+            );
+            assert!(
+                meta.confidence > 0.8,
+                "Should have high confidence for decimal column {} ({})",
+                idx,
+                name
+            );
+        }
+
+        // Test categorical columns
+        for (name, idx) in categorical_columns.iter() {
+            let meta: ColumnMetadata = from_value(csv.get_column_metadata(*idx).unwrap()).unwrap();
+            assert_eq!(
+                meta.data_type,
+                DataType::Categorical,
+                "Column {} ({}) should be Categorical",
+                idx,
+                name
+            );
+            assert!(
+                meta.confidence > 0.7,
+                "Should have reasonable confidence for categorical column {} ({})",
+                idx,
+                name
+            );
+        }
+
+        // Test text columns
+        for (name, idx) in text_columns.iter() {
+            let meta: ColumnMetadata = from_value(csv.get_column_metadata(*idx).unwrap()).unwrap();
+            assert_eq!(
+                meta.data_type,
+                DataType::Text,
+                "Column {} ({}) should be Text",
+                idx,
+                name
+            );
+        }
+
+        // Additional validation for column count
+        assert_eq!(
+            csv.column_count(),
+            41,
+            "Should have 41 columns in starters.csv"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_file_not_found() {
+        let result = read_csv_file("nonexistent.csv").await;
+        assert!(result.is_err(), "Should error on nonexistent file");
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_empty_csv() {
+        let empty_csv = "\n\n\n";
+        let result = CSV::from_string(empty_csv.to_string());
+        assert!(result.is_err(), "Should error on empty CSV");
+    }
+}
