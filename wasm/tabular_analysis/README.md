@@ -12,11 +12,17 @@ or build base rust with cargo
 cargo build
 ```
 
-testing
+## testing
+
+webassembly (generic)
 ```bash
 wasm-pack test --node
 ```
-or test base rust code with cargo
+webassembly browser specific
+```bash
+wasm-pack test --chrome --headless
+```
+core rust with cargo
 ```bash
 cargo test
 ```
