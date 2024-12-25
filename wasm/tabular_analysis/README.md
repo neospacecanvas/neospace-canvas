@@ -3,6 +3,9 @@
 This lib is written so as much code as possible can be built and tested with both cargo and wasm-pack.
 Some things like webworkers can only run with wasm-pack as they exist only in browser implementations.
 
+
+
+## build
 build project wasm binaries
 ```bash
 wasm-pack build --target web
@@ -13,6 +16,8 @@ cargo build
 ```
 
 ## testing
+You can run both the core rust tests and wasm tests at the same time with `test.sh`
+run `chmod +x test.sh` to enable the `test.sh` script in `{project-root}/wasm/tabular-analysis/`
 
 webassembly (generic)
 ```bash
