@@ -1,0 +1,29 @@
+// Vertex Shader
+uniform vec2 viewOffset;      // Pan offset
+uniform vec2 mousePos;        // Mouse position
+uniform vec2 viewportSize;    // Screen dimensions
+
+// Attributes would be grid coordinates (x, y) for each vertex
+attribute vec2 gridPosition;
+
+void main() {
+    // Calculate world position from grid coordinates
+    vec2 worldPos = gridPosition * DOT_SPACING;
+    
+    // Apply pan offset
+    vec2 offsetPos = worldPos + viewOffset;
+    
+    // Wrap position to viewport
+    // This creates the infinite effect by keeping coordinates reasonable
+    vec2 wrappedPos = mod(offsetPos + viewportSize * 0.5, viewportSize) - viewportSize * 0.5;
+    
+    // Calculate gravity effect
+    vec2 toMouse = mousePos - offsetPos;
+    float dist = length(toMouse);
+    float force = pow(1.0 - clamp(dist / GRAVITY_RADIUS, 0.0, 1.0), 2.0) * GRAVITY_STRENGTH;
+    vec2 gravityOffset = toMouse * force;
+    
+    // Final position
+    vec2 finalPos = wrappedPos + gravityOffset;
+    gl_Position = projectionMatrix * vec4(finalPos, 0.0, 1.0);
+}
